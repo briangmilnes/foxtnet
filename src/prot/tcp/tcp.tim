@@ -1,0 +1,214 @@
+(*
+
+	FoxNet: The Fox Project's Communication Protocol Implementation Effort
+	Edoardo Biagioni (Edoardo.Biagioni@cs.cmu.edu)
+	Brian Milnes (Brian.Milnes@cs.cmu.edu)
+	Ken Cline (Kenneth.Cline@cs.cmu.edu)
+        Nick Haines (Nick.Haines@cs.cmu.edu)
+	Fox Project
+	School of Computer Science
+	Carnegie Mellon University
+	Pittsburgh, Pa 15139-3891
+
+		i.	Abstract
+
+	Timing code for Tcp.
+
+
+		ii.	Table of Contents
+
+	i.	Abstract
+	ii.	Table of Contents
+	iii.	RCS Log
+	1.	functor TcpTimAux
+
+		iii.	RCS Log
+	
+$Log: tcp.tim,v $
+Revision 1.24  1995/03/10  03:47:37  esb
+adapted to new vendor.sig.
+
+Revision 1.23  1995/02/04  20:40:26  robby
+updated to 107
+
+Revision 1.22  1994/08/18  20:27:03  esb
+gutted on_connection, removed on_receipt.
+
+Revision 1.21  1994/08/17  16:28:26  esb
+minor tuning and bug fixes.
+
+Revision 1.20  1994/07/04  21:33:34  esb
+adapted to Copy/Create split.
+
+Revision 1.19  1994/07/01  02:29:15  danwang
+Moved control structures into Fox_Basis.
+
+Revision 1.18  1994/06/20  20:18:36  esb
+added translate_pattern.
+
+Revision 1.17  1994/06/16  21:51:05  danwang
+Updated to use functorized Fox_Basis.
+
+Revision 1.16  1994/05/04  01:42:34  esb
+made it possible to send very large packets.
+
+Revision 1.15  94/04/06  23:15:05  esb
+adapted to new receive_packet interface.
+
+Revision 1.14  94/03/29  17:44:40  milnes
+Moved to using Receive_Packet size, and bounds checked formats.
+
+Revision 1.13  1994/03/04  02:26:33  milnes
+Added mut.
+
+Revision 1.11  1994/02/21  00:02:14  esb
+minor change.
+
+Revision 1.10  94/02/17  17:10:27  milnes
+Checked out, reinstalled old, rechecked in to repair the afs file move problems that confused rcs.
+
+Revision 1.8  1994/02/08  19:04:29  milnes
+Changes for new whole new timing style.
+
+Revision 1.7  1994/01/31  00:00:57  esb
+adapted to new interfaces.
+
+Revision 1.6  1994/01/30  18:32:52  milnes
+adapted to new interfaces.
+
+Revision 1.5  1993/12/09  19:42:19  milnes
+Updated to handle scheduler, proto.sig, dev.sig and timeprotocol.sig changes.
+
+Revision 1.4  1993/11/17  15:28:34  esb
+fixed packet checking to deal with TCP changing packet boundaries.
+
+Revision 1.3  1993/11/15  17:37:16  milnes
+ Changed the timing delay for tcp.
+
+Revision 1.2  1993/11/11  05:19:53  esb
+functor parameter changes.
+
+		1.	functor TcpTimAux
+*)
+
+functor Tcp_Tim (structure Tcp: TCP_PROTOCOL
+		 structure B: FOX_BASIS
+		   sharing type Tcp.incoming = B.Dyn_Array.T
+		       and type Tcp.outgoing = B.Dyn_Array.T
+		       and type Tcp.port = FoxWord16.word
+		       and type Tcp.lower_layer_address = FoxWord32.word
+                 val local_port: FoxWord16.word
+		 val remote_port: FoxWord16.word
+		 val do_prints: bool): TIME_PROTOCOL =
+ struct
+  structure Trace = Trace (structure V = B.V
+			   val debug_level = debug_level
+			   val module_name = "tcp.tim")
+  val local_print = Trace.local_print
+  val debug_print = Trace.debug_print 
+
+  structure P = Tcp
+  val header = "tcp.tim: "
+  type byte = FoxWord8.word
+  type ip_number = FoxWord32.word
+
+  datatype check_result = Valid | Invalid | Ignore
+
+  fun int_b1 n = FoxWord8.intToWord (n mod 256)
+  fun make_data size = B.Create.create_fn (size, int_b1)
+
+  fun make_packet (connection, data) =
+       let val size = ByteArray.length data
+           val (packet, send) = Tcp.allocate_send (connection, size)
+       in B.Dyn_Array.update (packet, 0, data);
+          send
+       end
+
+  fun print_data (data, max) =
+       let val header = "\ntcp.tim: checking incoming \n"
+	   val format = [B.Format.String header, B.Format.Bytes max]
+       in if ByteArray.length data < max then 
+	   local_print ("\n tcp.tim: error in print_data, " ^
+			"bytearray shorter than format.\n")
+	  else
+	   local_print (fold op^ (B.Format.bytearray (format, data, 0)) "")
+       end
+
+(* compare the packet against the end of the data. If this is the
+   end of the segment sent, it will match and we return valid;
+   otherwise, it won't match and we return Ignore.
+   This assumes that TCP does not merge segments, which is only
+   true of the current implementation. Better strategies are
+   needed for better implementations. *)
+  fun do_check (data, packet) =
+       let val length = B.Dyn_Array.size packet
+           val received = B.Dyn_Array.read packet
+           val data_length = ByteArray.length data
+	   val access_first = B.Access.Range {first = data_length - length,
+					      last = length}
+	   val access_second = B.Access.Range {first = 0, last = length}
+       in if do_prints then print_data (received, 60) else ();
+          if B.Access.compare_ranges ((data, access_first),
+				      (received, access_second)) then Valid
+	  else Ignore
+       end
+
+(* compare the last word of the packet against the last word of the of
+   the data. If this is the end of the segment sent, it will match and
+   we return valid; otherwise, it won't match and we return Ignore.
+   This assumes that TCP does not merge segments, which is only
+   true of the current implementation. Better strategies are
+   needed for better implementations. *)
+  fun short_check (data, packet) =
+       let val length = B.Dyn_Array.size packet
+           val received = B.Dyn_Array.sub (packet, length - 4, 4)
+           val data_length = ByteArray.length data
+	   val data_one = ByteArray.sub (data, data_length - 1)
+	   val data_two = ByteArray.sub (data, data_length - 2)
+	   val data_three = ByteArray.sub (data, data_length - 3)
+	   val data_four = ByteArray.sub (data, data_length - 4)
+	   val packet_one = ByteArray.sub (received, length - 1)
+	   val packet_two = ByteArray.sub (received, length - 2)
+	   val packet_three = ByteArray.sub (received, length - 3)
+	   val packet_four = ByteArray.sub (received, length - 4)
+       in if do_prints then print_data (received, 4) else ();
+          if data_one = packet_one andalso data_two = packet_two andalso
+             data_three = packet_three andalso data_four = packet_four then
+	   Valid
+	  else Ignore
+       end
+
+  datatype check_data = All | Some | None
+
+  fun check_data (All, data, packet) = do_check (data, packet)
+    | check_data (Some, data, packet) = short_check (data, packet)
+    | check_data (None, data, packet) = Valid
+
+  fun check_other _ = Valid
+
+  val byte = B.Dyn_Array.sub1
+
+  fun start_test () = ()
+  val stop_test = start_test
+  exception Bad_Ip_Address of FoxWord32.word * string
+
+  fun translate_address ip = 
+       P.Address (P.Key {peer = ip,
+			 local_port = local_port, remote_port = remote_port})
+
+  fun makestring_packet packet = 
+       let val data = B.Dyn_Array.read packet
+       in B.V.String.concat (B.Format.bytearray
+			     ([B.Format.String "Packet: ",
+			       B.Format.Bytes 
+			       (min (100, ByteArray.length data)),
+			       B.Format.String "\n"], data, 0))
+       end
+
+  fun on_connection c = ()
+
+  val min_packet = 1
+
+  val size = FoxWord32.intToWord o B.Dyn_Array.size
+
+ end (* struct *)

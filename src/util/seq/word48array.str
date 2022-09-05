@@ -1,0 +1,421 @@
+(*
+
+	FoxNet: The Fox Project's Communication Protocol Implementation Effort
+	Edoardo Biagioni (esb@cs.cmu.edu)
+	Ken Cline (Kenneth.Cline@cs.cmu.edu)
+	Brian Milnes (Brian.Milnes@cs.cmu.edu)
+        Nick Haines (Nick.Haines@cs.cmu.edu)
+	Fox Project
+	School of Computer Science
+	Carnegie Mellon University
+	Pittsburgh, Pa 15213-3891
+
+		i.	Abstract
+
+	word48array.str: word-48 arrays.
+
+		ii.	Table of Contents
+
+	i.	Abstract
+	ii.	Table of Contents
+	iii.	RCS Log
+	1.	signature WORD48_ARRAY
+	2.	signature WORD48_BASICS =
+	3.	functor Word48_Array_Write
+	4.	functor Word48_Array_Seq
+	5.	structure Word48_Array
+	6.	basic functions
+	7.	structure Big
+	8.	structure Little
+	9.	structure Native
+
+		iii.	RCS Log
+	
+$Log: word48array.str,v $
+Revision 1.2  1995/07/05  17:47:43  esb
+changed the definition of new to eliminate generator and iterator.
+
+Revision 1.1  1995/06/29  18:23:54  esb
+Initial revision
+
+
+		1.	signature WORD48_ARRAY
+*)
+
+signature WORD48_ARRAY =
+ sig
+  include ENDIAN_ARRAY
+  sharing type element = FoxWord48.word
+
+  exception Unaligned
+
+   (* all these functions copy the array.  Odd bytes are lost *)
+  val from8 : Word_Array.W8.T  -> (T * Word_Array.W8.T)
+  val from16: Word_Array.W16.T -> (T * Word_Array.W8.T)
+  val from32: Word_Array.W32.T -> (T * Word_Array.W8.T)
+  val from64: Word_Array.W64.T -> (T * Word_Array.W8.T)
+
+  val to8 : T -> Word_Array.W8.T
+  val to16: T -> (Word_Array.W16.T * Word_Array.W8.T)
+  val to32: T -> (Word_Array.W32.T * Word_Array.W8.T)
+  val to64: T -> (Word_Array.W64.T * Word_Array.W8.T)
+ end
+
+(*
+		2.	signature WORD48_BASICS =
+*)
+
+signature WORD48_BASICS =
+ sig
+  type element = FoxWord48.word
+  datatype T = T of Word_Array.T
+  datatype updatable = Updatable of Word_Array.W8.updatable
+                     | Rev_Updatable of Word_Array.W8.updatable
+ end
+
+(*
+		3.	functor Word48_Array_Write
+*)
+
+functor Word48_Array_Write (structure Real_Basics: WORD48_BASICS
+			    val update: Word_Array.W8.updatable
+				      * FoxWord48.word
+				      -> Word_Array.W8.updatable option
+			    val update_rev: Word_Array.W8.updatable
+				          * FoxWord48.word
+				          -> Word_Array.W8.updatable option) =
+ struct
+  fun length (Real_Basics.T array) = Word_Array.W8.length array quot 6
+
+  fun write (a as (Real_Basics.T array)) =
+       case Word_Array.W8.write array of
+	  NONE => NONE
+	| SOME writable =>
+	   if length a >= 1 then
+	    SOME (Real_Basics.Updatable writable)
+	   else NONE
+
+  fun rev_write (a as (Real_Basics.T array)) =
+       case Word_Array.W8.rev_write array of
+	  NONE => NONE
+	| SOME writable =>
+	   if length a >= 1 then
+	    SOME (Real_Basics.Rev_Updatable writable)
+	   else NONE
+
+  fun read (Real_Basics.Updatable writable) =
+       Real_Basics.T (Word_Array.W8.read writable)
+    | read (Real_Basics.Rev_Updatable writable) =
+       Real_Basics.T (Word_Array.W8.read writable)
+
+  val update_forward = update
+
+  fun update (Real_Basics.Updatable writable, value) =
+       (case update_forward (writable, value) of
+	   NONE => NONE
+	 | SOME writable => SOME (Real_Basics.Updatable writable))
+    | update (Real_Basics.Rev_Updatable writable, value) =
+       (case update_rev (writable, value) of
+	   NONE => NONE
+	 | SOME writable => SOME (Real_Basics.Rev_Updatable writable))
+
+ end
+
+(*
+		4.	functor Word48_Array_Seq
+*)
+
+functor Word48_Array_Seq (structure Basics: SEQ_BASICS
+			  structure Rev_Basics: SEQ_BASICS
+			    sharing type Basics.element = Rev_Basics.element
+			               = FoxWord48.word
+				and type Basics.T = Rev_Basics.T
+		          val update: Word_Array.W8.updatable * FoxWord48.word
+				    -> Word_Array.W8.updatable option
+			  val update_rev: Word_Array.W8.updatable
+				        * FoxWord48.word
+				        -> Word_Array.W8.updatable option
+			  structure Real_Basics: WORD48_BASICS) =
+ struct
+  fun word_equal (a: FoxWord48.word, b) = a = b
+
+  structure Rev =
+   struct
+    structure Basics = Rev_Basics
+    structure Derived = Word_Array_Functions (structure Basics = Basics)
+    open Basics
+    open Derived
+   end
+
+  structure Basics = Basics
+  structure Derived = Word_Array_Functions (structure Basics = Basics)
+  structure Finite = Finite_Word_Array (structure Basics = Basics
+					val element_less = FoxWord48.<
+					val element_equal = word_equal
+					structure Rev = Rev)
+  structure Write = Word48_Array_Write (structure Real_Basics = Real_Basics
+					val update = update
+					val update_rev = update_rev)
+
+  open Basics
+  open Derived
+  open Finite
+  open Write
+ end
+
+(*
+		5.	structure Word48_Array
+*)
+
+structure Word48_Array: WORD48_ARRAY =
+ struct
+
+  val native_big_endian = case FoxWord48.endian () of
+                             FoxWord48.Little => false
+			   | FoxWord48.Big => true
+  exception Unaligned
+
+(*
+		6.	basic functions
+*)
+
+  structure Real_Basics =
+   struct
+    type element = FoxWord48.word
+    datatype T = T of Word_Array.T
+    datatype updatable = Updatable of Word_Array.W8.updatable
+                       | Rev_Updatable of Word_Array.W8.updatable
+
+    exception Empty
+
+    val byte_mask = FoxWord48.intToWord 0xff
+
+    val big_indices = (40, 32, 24, 16, 8, 0)
+    val little_indices = (0, 8, 16, 24, 32, 40)
+
+    fun make_byte (value, shift) =
+         FoxWord8.intToWord
+          (FoxWord48.wordToInt
+	   (FoxWord48.andb (FoxWord48.rshiftl (value, shift), byte_mask)))
+
+    fun make_bytes (element, (i1, i2, i3, i4, i5, i6)) =
+         (make_byte (element, i1), make_byte (element, i2),
+	  make_byte (element, i3), make_byte (element, i4),
+	  make_byte (element, i5), make_byte (element, i6))
+
+    fun unmake_byte (value, shift) =
+         FoxWord48.lshift (FoxWord48.intToWord (FoxWord8.wordToInt value),
+			   shift)
+
+    fun unmake_bytes ((e1, e2, e3, e4, e5, e6), (i1, i2, i3, i4, i5, i6)) =
+         FoxWord48.orb (FoxWord48.orb (FoxWord48.orb (unmake_byte (e1, i1),
+						      unmake_byte (e2, i2)),
+				       unmake_byte (e3, i3)),
+		        FoxWord48.orb (FoxWord48.orb (unmake_byte (e4, i4),
+						      unmake_byte (e5, i5)),
+				       unmake_byte (e6, i6)))
+
+    local
+     fun cross_generator ([], f, value, indices) =
+          (case f value of
+	      SOME (first, new_value) =>
+	       let val (e1, e2, e3, e4, e5, e6) = make_bytes (first, indices)
+	       in cross_generator ([e1, e2, e3, e4, e5, e6],
+				   f, new_value, indices)
+	       end
+            | NONE => NONE)
+       | cross_generator (first :: rest, f, value, indices) =
+          SOME (first, (rest, f, value, indices))
+    in
+
+     fun new_big f value =
+          T (Word_Array.W8.new cross_generator ([], f, value, big_indices))
+
+     fun new_little f value =
+          T (Word_Array.W8.new cross_generator ([], f, value, little_indices))
+
+     fun new_rev_big f value =
+          T (Word_Array.W8.Rev.new cross_generator
+	                           ([], f, value, little_indices))
+
+     fun new_rev_little f value =
+          T (Word_Array.W8.Rev.new cross_generator ([], f, value, big_indices))
+    end
+
+    local
+     fun next_indexed (T array, indices, next) =
+          (case next array of
+	      SOME (e1, a1) =>
+	       (case next a1 of
+	           SOME (e2, a2) =>
+		    (case next a2 of
+		        SOME (e3, a3) =>
+		         (case next a3 of
+			     SOME (e4, a4) =>
+			      (case next a4 of
+			          SOME (e5, a5) =>
+				   (case next a5 of
+				       SOME (e6, a6) =>
+				        SOME (unmake_bytes ((e1, e2, e3,
+							     e4, e5, e6),
+							    indices),
+					      T a6)
+				     | NONE => NONE)
+			        | NONE => NONE)
+			   | NONE => NONE)
+		      | NONE => NONE)
+	         | NONE => NONE)
+	    | NONE => NONE)
+    in
+     fun next_big array =
+          next_indexed (array, big_indices, Word_Array.W8.next)
+
+     fun next_little array =
+          next_indexed (array, little_indices, Word_Array.W8.next)
+
+     fun next_rev_big array =
+          next_indexed (array, little_indices, Word_Array.W8.Rev.next)
+
+     fun next_rev_little array =
+          next_indexed (array, big_indices, Word_Array.W8.Rev.next)
+
+    end
+
+    fun seek (T array, offset) = T (Word_Array.W8.seek (array, offset * 6))
+    fun seek_rev (T array, offset) =
+         T (Word_Array.W8.Rev.seek (array, offset * 6))
+
+    local
+     fun update_elements (array, (e1, e2, e3, e4, e5, e6)) =
+	  case Word_Array.W8.update (array, e1) of
+	     NONE => NONE
+	   | SOME array2 =>
+	      case Word_Array.W8.update (array2, e2) of
+	         NONE => NONE
+	       | SOME array3 =>
+		  case Word_Array.W8.update (array3, e3) of
+		     NONE => NONE
+		   | SOME array4 =>
+		      case Word_Array.W8.update (array4, e4) of
+		         NONE => NONE
+		       | SOME array5 =>
+			  case Word_Array.W8.update (array5, e5) of
+			     NONE => NONE
+			   | SOME array6 =>
+			      case Word_Array.W8.update (array6, e6) of
+			         NONE => NONE
+			       | SOME final => SOME final
+    in
+     fun update_big (updatable, value) =
+	  update_elements (updatable, make_bytes (value, big_indices))
+
+     fun update_little (updatable, value) =
+	  update_elements (updatable, make_bytes (value, little_indices))
+
+     val update_rev_big = update_little
+     val update_rev_little = update_big
+    end
+   end
+
+(*
+		7.	structure Big
+*)
+
+  structure Big_Basics =
+   struct
+    open Real_Basics
+    val new = new_big
+    val next = next_big
+   end
+
+  structure Big_Rev_Basics =
+   struct
+    open Real_Basics
+    val new = new_rev_big
+    val next = next_rev_big
+   end
+
+  structure Big = Word48_Array_Seq (structure Basics = Big_Basics
+				    structure Rev_Basics = Big_Rev_Basics
+				    val update = Real_Basics.update_big
+				    val update_rev = Real_Basics.update_rev_big
+				    structure Real_Basics = Real_Basics)
+
+(*
+		8.	structure Little
+*)
+
+  structure Little_Basics =
+   struct
+    open Real_Basics
+    val new = new_little
+    val next = next_little
+   end
+
+  structure Little_Rev_Basics =
+   struct
+    open Real_Basics
+    val new = new_rev_little
+    val next = next_rev_little
+   end
+
+  structure Little =
+      Word48_Array_Seq (structure Basics = Little_Basics
+			structure Rev_Basics = Little_Rev_Basics
+			val update = Real_Basics.update_little
+			val update_rev = Real_Basics.update_rev_little
+			structure Real_Basics = Real_Basics)
+
+(*
+		9.	structure Native
+*)
+
+  structure Native_Basics =
+   struct
+    open Real_Basics
+    val new = if native_big_endian then new_big else new_little
+    val next = if native_big_endian then next_big else next_little
+   end
+
+  structure Native_Rev_Basics =
+   struct
+    open Real_Basics
+    val new = if native_big_endian then new_rev_big else new_rev_little
+    val next = if native_big_endian then next_rev_big else next_rev_little
+   end
+
+  val update_native = if native_big_endian then Real_Basics.update_big
+		      else Real_Basics.update_little
+  val update_rev_native = if native_big_endian then Real_Basics.update_rev_big
+			  else Real_Basics.update_rev_little
+  structure Native =
+      Word48_Array_Seq (structure Basics = Native_Basics
+			structure Rev_Basics = Native_Rev_Basics
+			val update = update_native
+			val update_rev = update_rev_native
+			structure Real_Basics = Real_Basics)
+
+  open Native
+
+(*
+		9.	conversion functions
+*)
+
+  val empty8 = Word_Array.W8.create (FoxWord8.intToWord 0, 0)
+
+  fun from8 array =
+       let val length = Word_Array.W8.length array
+	   val odd = length mod 6
+	   val odd_array = Word_Array.W8.seek (array, length - odd)
+       in (Real_Basics.T array, odd_array)
+       end
+  val from16 = from8 o Word_Array.convert8 o Word_Array.Array16
+  val from32 = from8 o Word_Array.convert8 o Word_Array.Array32
+  val from64 = from8 o Word_Array.convert8 o Word_Array.Array64
+
+  fun to8 (Real_Basics.T array) = array
+  val to16 = Word_Array.convert16 o Word_Array.Array8 o to8
+  val to32 = Word_Array.convert32 o Word_Array.Array8 o to8
+  val to64 = Word_Array.convert64 o Word_Array.Array8 o to8
+
+ end

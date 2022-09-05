@@ -1,0 +1,2 @@
+Decl 4
+s$PAIR_LINEARIZE.sqo$LINEARIZE.;;sP1.v$LINEARIZE.;-;sP2.v$LINEARIZE.;-;rP1.P2.;;-;

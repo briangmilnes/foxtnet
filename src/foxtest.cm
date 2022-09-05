@@ -1,0 +1,126 @@
+(*
+
+	Fox Net: The Fox Project's Communication Protocol Implementation Effort
+	Edoardo Biagioni (Edoardo.Biagioni@cs.cmu.edu)
+	Ken Cline (Kenneth.Cline@cs.cmu.edu)
+	Brian Milnes (Brian.Milnes@cs.cmu.edu)
+        Nick Haines (Nick.Haines@cs.cmu.edu)
+	Fox Project
+	School of Computer Science
+	Carnegie Mellon University
+	Pittsburgh, Pa 15213-3891
+
+		i.	Abstract
+
+	Fox Net Tests Compilation Manager file.
+
+
+		ii.	Table of Contents
+
+	i.	Abstract
+	ii.	Table of Contents
+	iii.	RCS Log
+	iv.	usage
+	1.	exported structures
+	2.	import the fox net
+	3.	word tests
+	4.	utility tests
+	5.	protocol tests
+
+		iii.	RCS Log
+	
+$Log: foxtest.cm,v $
+Revision 1.6  1995/06/29  19:14:51  esb
+added ipfrag.tst
+
+Revision 1.5  1995/06/28  19:46:16  cline
+added udp.tst
+
+Revision 1.4  1995/06/26  17:31:06  esb
+added ip.tst.
+
+Revision 1.3  1995/06/23  20:40:44  esb
+fixed a mis-spelling.
+
+Revision 1.2  1995/06/23  20:16:31  esb
+added ipheader.tst, uncommented the other tests.
+
+Revision 1.1  1995/06/20  16:19:04  esb
+Initial revision
+
+
+		iv.	usage
+
+	to build under SML/NJ 107.7 or subsequent versions:
+	   fun t _ = CM.make' (CM.cmfile "foxtest.cm");
+
+		1.	exported structures
+*)
+
+Group
+
+  signature TEST_STRUCTURE
+
+  structure Fox_Basis
+  structure FoxWord8
+  structure FoxWord16
+  structure FoxWord32
+  structure FoxWord48
+  structure FoxWord64
+  structure FoxMakestring
+  structure SW
+
+is
+
+(*
+		2.	import the fox net
+*)
+
+foxnet.cm
+
+(*
+		3.	word tests
+*)
+
+vendor/word.tst : SML
+
+(*
+		4.	utility tests
+*)
+
+util/store.tst : SML
+util/fifo.tst : SML
+util/priority.tst : SML
+util/checksum.tst : SML
+util/tree.tst : SML
+
+util/order/order.tst : SML
+
+util/seq/wordarray.tst : SML
+
+util/bytearrays/copy.tst : SML
+util/bytearrays/access.tst : SML
+
+filter/filter.tst : SML
+
+control/coro.tst : SML
+control/event.tst : SML
+control/pipe.tst : SML
+
+(*
+		5.	protocol tests
+*)
+
+prot/proto/protoextern.tst : SML
+
+prot/eth/eth.tst : SML
+prot/block/ethall.tst : SML
+
+prot/arp/arp.tst : SML
+
+prot/ip/pseudoip.tst : SML
+prot/ip/ipheader.tst : SML
+prot/ip/ipfrag.tst : SML
+prot/ip/ip.tst : SML
+
+prot/udp/udp.tst : SML

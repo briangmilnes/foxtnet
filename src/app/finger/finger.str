@@ -1,0 +1,92 @@
+(*
+
+	FoxNet: The Fox Project's Communication Protocol Implementation Effort
+	Edoardo Biagioni (Edoardo.Biagioni@cs.cmu.edu)
+	Ken Cline (Kenneth.Cline@cs.cmu.edu)
+	Fox Project
+	School of Computer Science
+	Carnegie Mellon University
+	Pittsburgh, Pa 15139-3891
+
+		i.	Abstract
+
+
+
+		ii.	Table of Contents
+
+	i.	Abstract
+	ii.	Table of Contents
+	iii.	RCS Log
+	1.	structure Finger
+
+		iii.	RCS Log
+	
+$Log: finger.str,v $
+Revision 1.3  1996/10/03  18:40:17  esb
+adapted to new builddns.fun.
+
+Revision 1.2  1996/09/17  15:55:02  cline
+rewrite
+
+Revision 1.1  1994/08/28  18:55:07  robby
+Initial revision
+
+
+		1.	structure Finger
+*)
+
+structure Finger: FINGER =
+  struct
+    structure B = Fox_Basis
+
+    val dev_debug = ref 0
+    val eth_debug = ref 0
+    val arp_debug = ref 0
+    val ip_debug = ref 0
+    val udp_debug = ref 0
+    val tcp_debug = ref 0
+    val debug_level = SOME (ref 0)
+
+    local
+      structure Base = Build_Eth_Dev (structure B = Fox_Basis
+				      val debug_level = SOME dev_debug)
+
+      structure Init = Initialize (structure Device = Base.Raw
+				   structure V = Fox_Basis.V
+   (* use 'val hostname_to_ip = fn _ => NONE' to force the use of system files
+      (e.g. /etc/... ) to figure out the local IP number. *)
+				   val hostname_to_ip =
+				     Hostname_Ip.hostname_to_ip 
+				   val interface_number = 0)
+
+      structure Stack = Build_Dns (structure Device = Base.Dev
+				   structure B = Fox_Basis
+				   val tcp_window_size = 4096
+				   val tcp_user_timeout = (* 5 seconds *)
+				     Word32.fromInt 5000
+				   val udp_checksum = true
+				   val eth_debug_level = NONE
+				   val arp_debug_level = NONE
+				   val ip_debug_level = NONE
+				   val tcp_debug_level = SOME tcp_debug
+				   val udp_debug_level = NONE
+				   val dns_debug_level = NONE)
+  in
+   structure Tcp = Stack.Tcp
+
+   val setup = Stack.Udp.Transport_Setup.Setup o Init.Ip.setup
+   fun lookup s =
+     Stack.Dns_Lookup.lookup (Init.Dns.setup (setup ())) s
+  end
+
+ structure Finger = Finger (structure T = Tcp
+			    structure B = Fox_Basis
+			    val setup = setup
+			    val lookup = lookup
+			    val timeout = 30000)
+
+ open Finger
+
+ val finger = Keyboard_Interrupts.protect finger
+
+end

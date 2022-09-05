@@ -1,0 +1,299 @@
+(*---------------------------------------------------------------------------*>
+ *
+ *  telnet_io.str
+ *  6 / 30 / 95
+ *  Sidd Puri
+ *
+ *  The TelnetIO structure implements the I/O structure for the Telnet
+ *  protocol.  The structure obeys TELNETIO signature from telnet_io.sig, which
+ *  is a subsignature of EXTERNAL from prototype.sig.
+ *
+<*---------------------------------------------------------------------------*)
+
+structure TelnetIO : TELNETIO = struct
+
+  (* Types and exceptions ---------------------------------------------------*)
+
+  datatype data =
+    Synch
+  | No_Op
+  | Break
+  | Interpt_Proc
+  | Abort_Output
+  | Are_You_There
+  | Erase_Char
+  | Erase_Line
+  | Go_Ahead
+  | Data of string
+
+  type option_code = int
+
+  datatype negotiation =
+    Will  of option_code
+  | Won't of option_code
+  | Do    of option_code
+  | Don't of option_code
+  | Subnegotiation of option_code * int list
+
+  datatype parse_state =
+    Initial
+  | Saw_CR
+  | Saw_IAC
+  | Saw_Neg of option_code -> negotiation
+  | Saw_Subneg
+  | In_Subneg     of option_code * int list
+  | In_Subneg_IAC of option_code * int list
+
+  type IOT = data list
+  type T = IOT
+
+  exception TelnetIO of string
+
+  (* Special values ---------------------------------------------------------*)
+
+  val initial_state = Initial
+
+  val NULL  = 0
+  val LF    = 10
+  val CR    = 13
+  val SE    = 240
+  val NOP   = 241
+  val DM    = 242
+  val BRK   = 243
+  val IP    = 244
+  val AO    = 245
+  val AYT   = 246
+  val EC    = 247
+  val EL    = 248
+  val GA    = 249
+  val SB    = 250
+  val WILL  = 251
+  val WON'T = 252
+  val DO    = 253
+  val DON'T = 254
+  val IAC   = 255
+
+  val data_mark = [ IAC, DM ]
+
+  (* Makestring -------------------------------------------------------------*)
+
+  fun makestring_data Synch         = " <Synch> "
+    | makestring_data No_Op         = " <No-Op> "
+    | makestring_data Break         = " <Break> "
+    | makestring_data Interpt_Proc  = " <Interrupt Process> "
+    | makestring_data Abort_Output  = " <Abort Output> "
+    | makestring_data Are_You_There = " <Are You There?> "
+    | makestring_data Erase_Char    = " <Erase Character> "
+    | makestring_data Erase_Line    = " <Erase Line> "
+    | makestring_data Go_Ahead      = " <Go Ahead> "
+    | makestring_data (Data str)    = str
+
+  fun makestring_neg (Will  n) = "Will  " ^ makestring n
+    | makestring_neg (Won't n) = "Won't " ^ makestring n
+    | makestring_neg (Do    n) = "Do    " ^ makestring n
+    | makestring_neg (Don't n) = "Don't " ^ makestring n
+    | makestring_neg (Subnegotiation (n, neg)) =
+      "Subneg " ^ makestring n ^ concat (map (fn n => " " ^ makestring n) neg)
+
+  (* Parse ------------------------------------------------------------------*)
+
+  fun parse (
+    data_handler, neg_handler,
+    state, synch, { binary }
+  ) incoming = let
+
+    fun finish ([], data) = data
+      | finish (str, data) = Data (implode (rev str)) :: data
+
+    fun dispatch data =
+      case finish data of
+	[] => ()
+      | d => data_handler (rev d)
+
+    fun add_char ((str, data), ch) =
+      if not (!synch) then (chr ch :: str, data)
+      else (str, data)
+    fun add_com (stuff, com) =
+      if not (!synch) orelse
+	(com = Interpt_Proc orelse com = Abort_Output
+	 orelse com = Are_You_There)
+      then ([], com :: finish stuff)
+      else stuff
+    infix 6 add_char add_com
+
+    fun p st [] stuff = (state := st; dispatch stuff)
+      | p Initial (n :: rest) stuff = (
+          case n of
+	     13 (* CR    *) =>
+	       if !binary then p Initial rest (stuff add_char CR)
+	       else p Saw_CR rest stuff
+	  | 255 (* IAC   *) => p Saw_IAC rest stuff
+	  |  n              => p Initial rest (stuff add_char n)
+	)
+      | p Saw_CR (n :: rest) stuff = (
+          case n of
+	     10 (* LF    *) => p Initial rest (stuff add_char LF)
+	  |   0 (* NULL  *) => p Initial rest (stuff add_char CR)
+	  |  n  (* error *) => p Initial rest (stuff add_char CR add_char n)
+	)
+      | p Saw_IAC (n :: rest) stuff = (
+          case n of
+	    241 (* NOP   *) => p Initial rest (stuff add_com No_Op)
+	  | 242 (* DM    *) => (synch := false; p Initial rest stuff)
+	  | 243 (* BRK   *) => p Initial rest (stuff add_com Break)
+	  | 244 (* IP    *) => p Initial rest (stuff add_com Interpt_Proc)
+	  | 245 (* AO    *) => p Initial rest (stuff add_com Abort_Output)
+	  | 246 (* AYT   *) => p Initial rest (stuff add_com Are_You_There)
+	  | 247 (* EC    *) => p Initial rest (stuff add_com Erase_Char)
+	  | 248 (* EL    *) => p Initial rest (stuff add_com Erase_Line)
+	  | 249 (* GA    *) => p Initial rest (stuff add_com Go_Ahead)
+	  | 250 (* SB    *) => p  Saw_Subneg     rest stuff
+	  | 251 (* WILL  *) => p (Saw_Neg Will ) rest stuff
+	  | 252 (* WON'T *) => p (Saw_Neg Won't) rest stuff
+	  | 253 (* DO    *) => p (Saw_Neg Do   ) rest stuff
+	  | 254 (* DON'T *) => p (Saw_Neg Don't) rest stuff
+	  | 255 (* IAC   *) => p Initial rest (stuff add_char IAC)
+	  |  n  (* error *) => p Initial rest (stuff add_char IAC add_char n)
+	)
+      | p (Saw_Neg neg) (n :: rest) stuff = (
+          dispatch stuff;
+          neg_handler (neg n);
+	  p Initial rest ([], [])
+	)
+      | p Saw_Subneg (n :: rest) stuff =
+        (dispatch stuff; p (In_Subneg (n, [])) rest ([], []))
+      | p (In_Subneg (opt, neg)) (n :: rest) stuff = (
+          case n of
+	    255 (* IAC   *) => p (In_Subneg_IAC (opt, neg)) rest stuff
+	  | n => p (In_Subneg (opt, n :: neg)) rest stuff
+	)
+      | p (In_Subneg_IAC (opt, neg)) (n :: rest) stuff = (
+          case n of
+	    240 (* SE    *) => (
+	      neg_handler (Subnegotiation (opt, rev neg));
+	      p Initial rest stuff
+	    )
+	  | 255 (* IAC   *) =>
+	    p (In_Subneg (opt, IAC :: neg)) rest stuff
+	  |  n  (* error *) =>
+	    p (In_Subneg (opt, n :: IAC :: neg)) rest stuff
+	)
+  in
+    p (!state) incoming ([], [])
+  end
+
+  (* Unparse ----------------------------------------------------------------*)
+
+  fun unparse (send, send_synch, buffer, { binary, lecho, recho }) data = let
+    fun unp [] out ok =
+        if (ok orelse !lecho orelse !recho) andalso out <> []
+	then (buffer := []; send (rev out))
+	else buffer := out
+      | unp (Synch :: rest) out ok = (
+          send (rev out);
+	  send_synch;
+	  unp rest [] false
+        )
+      | unp (No_Op         :: rest) out ok = unp rest (NOP :: IAC :: out) ok
+      | unp (Break         :: rest) out ok = unp rest (BRK :: IAC :: out) true
+      | unp (Interpt_Proc  :: rest) out ok = unp rest (IP  :: IAC :: out) true
+      | unp (Abort_Output  :: rest) out ok = unp rest (AO  :: IAC :: out) true
+      | unp (Are_You_There :: rest) out ok = unp rest (AYT :: IAC :: out) true
+      | unp (Erase_Char    :: rest) out ok = unp rest (EC  :: IAC :: out) ok
+      | unp (Erase_Line    :: rest) out ok = unp rest (EL  :: IAC :: out) ok
+      | unp (Go_Ahead      :: rest) out ok = unp rest (GA  :: IAC :: out) ok
+      | unp (Data str      :: rest) out ok =
+	unparse_string (explode str) rest out ok
+
+    and unparse_string [] rest out ok = unp rest out ok
+      | unparse_string (c :: str) rest out ok = (
+          case ord c of
+	    10 (* LF *) =>
+	      unparse_string str rest
+	        (if !binary then LF :: out else LF :: CR :: out)
+		true
+	  | n => unparse_string str rest (n :: out) ok
+        )
+  in
+    unp data (!buffer) false
+  end
+
+  (* Unparse negotiation ----------------------------------------------------*)
+
+  fun unparse_neg buffer neg = let
+    fun subneg_out [] out = out
+      | subneg_out (n :: rest) out =
+        case n of
+	  255 (* IAC *) => subneg_out rest (IAC :: IAC :: out)
+	|  n            => subneg_out rest (n          :: out)
+
+    fun neg_out (Will  n) out = n :: WILL  :: IAC :: out
+      | neg_out (Won't n) out = n :: WON'T :: IAC :: out
+      | neg_out (Do    n) out = n :: DO    :: IAC :: out
+      | neg_out (Don't n) out = n :: DON'T :: IAC :: out
+      | neg_out (Subnegotiation (n, subneg)) out =
+        SE :: IAC :: subneg_out subneg (n :: SB :: IAC :: out)
+  in
+    buffer := neg_out neg (!buffer)
+  end
+
+  (* Values and functions for the EXTERNAL signature ------------------------*)
+
+  val simple_unparse = let
+    fun unparse_data out [] = out
+      | unparse_data out (Data str :: rest) =
+        unparse_data (out @ map ord (explode str)) rest
+      | unparse_data out (_ :: rest) = unparse_data out rest
+  in
+    list_to_array o (unparse_data [])
+  end
+
+  val makestring = concat o map makestring_data
+
+  fun new array = [ Data (implode (map chr (array_to_list array))) ]
+
+  fun uninitialized n = []
+
+  val size = Word.fromInt o List.length
+
+  fun sub (t, { start, length }) = let
+    fun find t 0w0 = t
+      | find (d :: t) n = find t (n - 0w1)
+      | find t n = t
+    fun dosub out t 0w0 = rev out
+      | dosub out (d :: t) n = dosub (d :: out) t (n - 0w1)
+      | dosub out t n = rev out
+  in
+    simple_unparse (dosub [] (find t start) length)
+  end
+
+  fun update _ = raise TelnetIO "TelnetIO does not support update"
+
+  val join = op @
+
+  fun split (t, n) = let
+    fun dosplit (t, t', 0w0) = (rev t', t)
+      | dosplit ([], t', n) = dosplit ([], No_Op :: t', n - 0w1)
+      | dosplit (d :: t, t', n) = dosplit (t, d :: t', n - 0w1)
+  in
+    dosplit (t, [], n)
+  end
+
+  fun fold (t, f, start) = f (simple_unparse t, start)
+
+  fun makestring_max (t, n) = let
+    fun domakestr out [] n = concat (rev out)
+      | domakestr out (d :: t) n = let
+          val str = makestring_data d
+          val l = Word.fromInt (String.size str)
+        in
+          if l >= n then concat (rev (substring (str, 0, Word.toInt n) :: out))
+          else domakestr (str :: out) t (n - l)
+        end
+  in
+    domakestr [] t n
+  end
+
+  (*-------------------------------------------------------------------------*)
+
+end

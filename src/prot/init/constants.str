@@ -1,0 +1,53 @@
+(*
+
+	FoxNet: The Fox Project's Communication Protocol Implementation Effort
+	Edoardo Biagioni (Edoardo.Biagioni@cs.cmu.edu)
+	Ken Cline (Kenneth.Cline@cs.cmu.edu)
+	Fox Project
+	School of Computer Science
+	Carnegie Mellon University
+	Pittsburgh, Pa 15213-3891
+
+		i.	Abstract
+
+	Initialization constants for the Fox Net
+
+		ii.	Table of Contents
+
+	i.	Abstract
+	ii.	Table of Contents
+	iii.	RCS Log
+	1.	structure Constants
+
+		iii.	RCS Log
+	
+$Log: constants.str,v $
+Revision 1.2  1996/03/11  20:06:57  cline
+updated for 109.6
+
+Revision 1.1  1996/03/08  15:01:00  cline
+Initial revision
+
+	1.	structure Constants
+*)
+
+structure Constants =
+  struct
+
+    val xmeter_pathname = "/afs/cs/project/fox/foxnet/bin/xmeter"
+
+    val ip_protocol = Word16.fromInt 0x800
+    val arp_protocol = Word16.fromInt 0x806
+
+    val icmp_protocol = 0wx01:word8
+    val tcp_protocol =  0wx06:word8
+    val udp_protocol =  0wx11:word8
+
+    val dns_port = Word16.fromInt 53
+
+    structure TCP =
+      struct
+	val initial_window_size = 4096
+	val user_timeout = 10000
+      end
+  end

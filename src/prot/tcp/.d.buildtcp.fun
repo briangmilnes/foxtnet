@@ -1,0 +1,2 @@
+Decl 2
+(b f%Build_Tcp (l (h (d (c (d (a s%Lower (i f%Build_Ip_Icmp (h (d (a s%Device (g s%Device) 0) (a s%B (g s%B) 0))) F) 0)) (d (e s%Lower))) (c (d (f s%Ip s%FoxWord32 s%B s%FoxWord16 s%FoxWord8)) (d (a s%Tcp (i f%Tcp (h (d (a s%Lower (g s%Ip) 0) (a s%B (g s%B) 0))) F) 0))))) (g s$TCP_STACK) 0 (h (d (a s%Device (g s$DEVICE_PROTOCOL) 0) (a s%B (g s$FOX_BASIS) 0) (f s%Device s%B s%FoxWord16 s%FoxWord8)))))

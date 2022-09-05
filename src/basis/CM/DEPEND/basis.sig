@@ -1,0 +1,2 @@
+Decl 4
+s$FOX_BASIS.sqsV.v$VENDOR.;-;sDebug.v$DEBUG.;-;sTest.v$TEST.;-;sCopy.v$COPY.;-;sCreate.v$CREATE.;-;sOrder.v$BYTE_ORDERS.;-;sStore.v$STORE.;-;sFifo.v$FIFO.;-;sDeq.v$DEQ.;-;sChecksum.v$CHECKSUM.;-;sTabulate.v$TABULATE.;-;sEnvironment.v$UNIX_ENVIRONMENT.;-;sFormat.v$FORMAT.;-;sAccess.v$ACCESS.;-;sFilter.v$FILTER.;-;sCompare.v$COMPARE_SEQ.;-;sScheduler.v$COROUTINE.;-;sEvent.v$SIMPLE_EVENT_QUEUE.;-;sEvent_Queue.v$EVENT_QUEUE.;-;sPipe.v$DATA_PIPE.;-;sSemaphore.v$SEMAPHORE.;-;sWrite_Once.v$WRITE_ONCE.;-;sMemo.v$MEMOIZE.;-;rWord_Array.Compare.;;-;

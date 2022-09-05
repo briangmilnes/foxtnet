@@ -1,0 +1,2 @@
+Decl 2
+(d (a s$IP_CLIENT_SERVER (h (d (f s%FoxWord32))) 0) (b f%Ip_Real (l (h (d (a s%Trace (i f%Trace (h (a s%V (g s%B.V) 0)) F) 0) (f s%Trace) (a s%Ip (g s%Tcp_Ip_Eth.Ip_No_Icmp) 0) (f s%SW s%Trace s%System s%Ip s%Tcp_Ip_Eth s%B))) (g s$IP_CLIENT_SERVER) 0 (h (d (a s%B (g s$FOX_BASIS) 0) (a s%Tcp_Ip_Eth (g s$TCP_IP_ETH) 0) (f s%FoxWord8 s%FoxWord32 s%Tcp_Ip_Eth))))) (a s%Ip_Real (i f%Ip_Real (h (d (a s%B (g s%Fox_Basis) 0) (a s%Tcp_Ip_Eth (g s%Tcp_Ip_Eth) 0))) F) 0))

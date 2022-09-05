@@ -1,0 +1,2 @@
+Decl 2
+(a s$BUILD_LINEARIZE (h (d (a s%Ubyte1 (g s$UBYTE1_LINEARIZE) 0) (a s%Ubyte2 (g s$UBYTE2_LINEARIZE) 0) (a s%Ubyte4 (g s$UBYTE4_LINEARIZE) 0) (a s%Int (g s$INT_LINEARIZE) 0) (a s%Rev_Ubyte2 (g s$UBYTE2_LINEARIZE) 0) (a s%Rev_Ubyte4 (g s$UBYTE4_LINEARIZE) 0) (a s%Rev_Int (g s$INT_LINEARIZE) 0) (a s%CString (g s$STRING_LINEARIZE) 0) (a s%ByteArray1 (g s$BYTEARRAY_LINEARIZE) 0) (a s%ByteArray2 (g s$BYTEARRAY_LINEARIZE) 0) (a s%ByteArray3 (g s$BYTEARRAY3_LINEARIZE) 0) (a s%ByteArray4 (g s$BYTEARRAY_LINEARIZE) 0) (a s%Rev_ByteArray2 (g s$BYTEARRAY_LINEARIZE) 0))) 0)

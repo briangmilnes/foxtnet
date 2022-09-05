@@ -1,0 +1,122 @@
+(*
+
+	FoxNet: The Fox Project's Communication Protocol Implementation Effort
+        George Necula (George.Necula@@cs.cmu.edu)
+	Edoardo Biagioni (Edoardo.Biagioni@@cs.cmu.edu)
+	Brian Milnes (Brian.Milnes@@cs.cmu.edu)
+	Ken Cline (Kenneth.Cline@@cs.cmu.edu)
+        Nick Haines (Nick.Haines@@cs.cmu.edu)
+	Fox Project
+	School of Computer Science
+	Carnegie Mellon University
+	Pittsburgh, Pa 15139-3891
+
+		i.	Abstract
+
+DES encryption implementation description
+
+		ii.	Table of Contents
+
+	i.	Abstract
+	ii.	Table of Contents
+	iii.	RCS Log
+	1.	Description of the structure
+        2.      Usage
+
+		iii.	RCS Log
+	
+$Log: struct.txt,v $
+Revision 1.1  1994/01/13  18:50:42  necula
+Initial revision
+
+		1.	Description of the structure
+*)
+
+	This file describes the structure of the DES implementation in
+terms of functors and relation between them.
+
+
+ structure HalfBlock : HALFBLOCK   (in block.sig, block.sml)
+                                 This structure is the only one that
+knows that DES bits are packed into ubyte4 and and in what order. It
+exports all the needed operations on the HalfBlock.T
+
+
+ functor BlockFun(HalfBlock) : BLOCK  (in block.sig, block.sml)
+                                 This functor implements a DES block
+as two HalfBlock's in a flat_vector. It exports roughly the same
+interface as HalfBlock but extended to work on a full block.
+This functor can produce keys using a signature constraint (DES_KEY) that
+exports a limited view of the BLOCK.
+
+ 
+ functor DesAuxFun(Block) : DES_AUXILIARY (in aux.sig, aux.sml)
+
+This functor exports the necessary functions for DES. The functions
+are internally implemented as a general permutation function working
+on tables. All the tables specified in the DES standard are in this
+functor.
+
+
+ functor TextExtendedFun(Block) : TEXT_EXTENDED (in text.sig, text.sml)
+
+The TEXT in DES terminology is the piece of data to be encrypted or
+decrypted. The functor contains conversion functions from Text to
+Block (the format for encryption/decryption) and a fold high-order
+function useful for implementing DES encryption with error propagation
+(pcbc, cbc).
+Taking a limited view of the resulting structure one can obtain a Text
+: DES_TEXT structure to be exported. 
+
+ functor DesExtendedFun(DesAux, TextExtended) : DES_EXTENDED (des.sig, des.sml)
+
+This functor implements the basic DES encryption algorithm working
+both on Text (to be exported) and on Block (to be used in DesUtil).
+Using a signature constraint (DES) we can view the resulting
+structure containing only the functions to be exported from the
+library.
+ 
+
+ functor DesUtil(DesExtended) : DES_UTIL (util.sig, util.sml)
+
+This functor implements the pcbc error propagation algorithm and a
+password_to_key algorithm using cbc encryption. 
+
+
+
+                          2. Usage
+
+Following is an SML sequence of operation that must be used to build
+an Des structure.
+
+
+
+
+use "block.sig";
+use "key.sig";
+use "block.sml";
+use "text.sig";
+use "text.sml";
+use "aux.sig";
+use "aux.sml";
+use "des.sig";
+use "des.sml";
+use "util.sig";
+use "util.sml";
+
+			      (* Apply the functors *)
+  
+structure Block : BLOCK = BlockFun(structure HalfBlock = HalfBlock);
+structure DesKey : DES_KEY = Block;
+structure TextExtended : TEXT_EXTENDED =
+                               TextExtendedFun(structure Block = Block);
+
+structure Text : DES_TEXT = TextExtended;
+structure Aux : DES_AUXILIARY = DesAuxFun(structure Block = Block);
+structure DesExtended : DES_EXTENDED =
+  DesExtendedFun(structure Text = TextExtended
+		 structure Aux  = Aux);
+
+structure Des : DES =DesExtended; 
+structure DesUtil : DES_UTIL = DesUtilFun(structure Des = DesExtended);
+

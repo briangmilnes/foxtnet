@@ -1,0 +1,53 @@
+(*
+
+	FoxNet: The Fox Project's Communication Protocol Implementation Effort
+	Edoardo Biagioni (Edoardo.Biagioni@cs.cmu.edu)
+	Brian Milnes (Brian.Milnes@cs.cmu.edu)
+	Ken Cline (Kenneth.Cline@cs.cmu.edu)
+        Nick Haines (Nick.Haines@cs.cmu.edu)
+	Fox Project
+	School of Computer Science
+	Carnegie Mellon University
+	Pittsburgh, Pa 15213-3891
+
+		i.	Abstract
+	
+ 	A structure containing the default protocol numbers for TCP/IP.
+
+
+
+		ii.	Table of Contents
+
+	i.	Abstract
+	ii.	Table of Contents
+	iii.	RCS Log
+
+		iii.	RCS Log
+	
+$Log: defaultprotocolnumbers.str,v $
+Revision 1.4  1995/02/04  20:39:19  robby
+updated to 107
+
+Revision 1.3  1995/01/06  01:36:54  esb
+name change.
+
+Revision 1.2  1994/10/19  23:20:13  milnes
+updated to FoxWord.
+
+Revision 1.1  1994/10/10  18:33:28  milnes
+Initial revision
+
+		1.     structure Default_Protocol_Numbers
+*)
+
+structure Default_Protocol_Numbers =
+ struct
+   (* Ethernet Protocol Numbers *)
+  val ip_over_eth  = SW.n16"0x800"
+  val arp_over_eth = SW.n16"0x806"
+
+   (* IP Protocol Numbers *)
+  val icmp_over_ip = SW.n8"1"  (* [RFC 0790, page 6] *)
+  val tcp_over_ip  = SW.n8"6"  (* [RFC 0790, page 6] *)
+  val udp_over_ip  = SW.n8"17" (* [RFC 0790, page 6] *)
+ end

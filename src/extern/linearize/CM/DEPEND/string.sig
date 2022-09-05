@@ -1,0 +1,2 @@
+Decl 4
+s$STRING_LINEARIZE.sqo$LINEARIZE.;;;-;

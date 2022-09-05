@@ -1,0 +1,2 @@
+Decl 2
+(b f%Ip_With_Icmp (l (h (d (a s%Trace (i f%Trace (h (a s%V (g s%B.V) 0)) F) 0) (f s%Trace) (c (d (a s$IP_SUBPROTOCOL (h (d (f s%FoxWord16) (a s%Option (g s$IP_OPTION) 0) (f s%Option s%B) (e s$PROTOCOL) (f s%Icmp s%Option))) 0) (a s%From_Ip (g s%Ip) (g s$IP_SUBPROTOCOL))) (d (e s%From_Ip))) (a s%Icmp (g s%Icmp) 0) (f s%Option s%System s%Ip s%Icmp))) (g s$IP_PROTOCOL) 0 (h (d (a s%B (g s$FOX_BASIS) 0) (a s%Ip (g s$EXTENDED_IP) 0) (a s%Icmp (g s$ICMP_PROTOCOL) 0) (f s%B s%Icmp s%Ip)))))

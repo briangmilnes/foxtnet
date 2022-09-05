@@ -1,0 +1,2 @@
+Decl 2
+(a s%Test_Addresses (h (c (d (f s%FoxWord8 s%FoxWord16 s%FoxWord32) (a s%Byte1 (g s%FoxWord8) 0) (a s%Byte2 (g s%FoxWord16) 0) (a s%Byte4 (g s%FoxWord32) 0) (f s%SW s%FoxWord8 s%Byte4)) (d ))) 0)

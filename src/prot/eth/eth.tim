@@ -1,0 +1,221 @@
+(*
+
+	FoxNet: The Fox Project's Communication Protocol Implementation Effort
+	Edoardo Biagioni (Edoardo.Biagioni@cs.cmu.edu)
+	Brian Milnes (Brian.Milnes@cs.cmu.edu)
+	Nick Haines  (Nick.Haines@cs.cmu.edu)
+	Fox Project
+	School of Computer Science
+	Carnegie Mellon University
+	Pittsburgh, Pa 15139-3891
+
+		i.	Abstract
+
+
+
+		ii.	Table of Contents
+
+	i.	Abstract
+	ii.	Table of Contents
+	iii.	RCS Log
+	1.	functor EthTimAux
+
+		iii.	RCS Log
+	
+$Log: eth.tim,v $
+Revision 1.31  1995/03/10  03:46:01  esb
+adapted to new vendor.sig.
+
+Revision 1.30  1995/02/04  20:39:52  robby
+updated to 107
+
+Revision 1.29  1994/08/18  20:35:06  esb
+removed on_receipt.
+
+Revision 1.28  1994/08/17  16:27:01  esb
+now works.
+
+Revision 1.27  1994/07/01  02:26:08  danwang
+Moved control structures into Fox_Basis.
+
+Revision 1.26  1994/06/20  20:18:01  esb
+added translate_pattern.
+
+Revision 1.25  1994/06/17  13:55:48  danwang
+Fixed to reference Tabulate from the Fox_Basis.
+
+Revision 1.24  1994/06/16  21:50:07  danwang
+Updated to use functorized Fox_Basis.
+
+Revision 1.23  1994/04/06  23:10:16  esb
+adapted to new receive_packet interface.
+
+Revision 1.22  94/03/29  17:44:40  milnes
+Moved to using Receive_Packet size.
+
+Revision 1.21  1994/03/04  02:21:13  milnes
+Added mtu.
+
+Revision 1.20  1994/02/25  18:35:12  milnes
+Updated timing and moved to safe array operations.
+
+Revision 1.19  1994/02/20  23:59:33  esb
+minor change.
+
+Revision 1.18  94/02/17  17:10:27  milnes
+Checked out, reinstalled old, rechecked in to repair the afs file move problems that confused rcs.
+
+Revision 1.16  1994/02/08  19:04:29  milnes
+Changes for new whole new timing style.
+
+Revision 1.15  1994/01/30  18:29:28  milnes
+interface changes, added counters.
+
+Revision 1.14  1993/12/22  14:17:29  cline
+Added high_priority_filter to BuildEth.
+
+Revision 1.13  1993/12/09  19:42:19  milnes
+Updated to handle scheduler, proto.sig, dev.sig and timeprotocol.sig changes.
+
+Revision 1.12  1993/12/08  20:57:28  milnes
+Updated to the new timing signature.
+
+Revision 1.11  1993/11/11  04:56:05  esb
+changed functor parameters.
+
+Revision 1.10  1993/11/09  22:07:45  milnes
+Changed the protocol numbers and the build to share the event_queue.
+
+Revision 1.9  1993/10/26  17:00:18  esb
+eliminated a spurious ! .
+
+Revision 1.8  1993/10/25  19:32:05  cline
+removed .U from Byte[421].U
+
+Revision 1.7  1993/10/25  17:40:57  milnes
+Restructured for new timing build stack.
+
+Revision 1.6  1993/10/08  15:43:54  milnes
+Finished.
+
+Revision 1.5  1993/10/06  12:11:28  milnes
+Updated to centralize state and with changes from code review.
+
+Revision 1.4  1993/09/18  21:57:52  esb
+minor changes.
+
+Revision 1.3  1993/09/17  16:41:40  milnes
+Changed default parameters.
+
+Revision 1.2  1993/09/13  22:06:50  cline
+deleted '#'s from RCS log
+
+Revision 1.1  1993/09/03  17:25:55  milnes
+Initial revision
+
+
+		1.	functor EthTimAux
+*)
+
+functor Eth_Tim (structure Eth: ETHERNET_PROTOCOL
+		 structure B: FOX_BASIS
+		   sharing type Eth.incoming = B.Dyn_Array.T
+		       and type Eth.outgoing = B.Dyn_Array.T
+		 val protocol_number: ubyte2
+		 val debug_level: int ref option): TIME_PROTOCOL  =
+ struct
+  structure Trace = Trace (structure V = B.V
+			   val debug_level = debug_level
+			   val module_name = "eth.tim")
+  val local_print = Trace.local_print
+  val debug_print = Trace.debug_print 
+
+  structure P = Eth
+  datatype check_result = Valid | Invalid | Ignore
+  type byte = FoxWord8.word
+  type ip_number = FoxWord32.word
+
+  fun make_data size =
+       B.Access.from_list (B.Tabulate.tabulate
+			   ((fn n => FoxWord8.from_int (n mod 256)), size))
+
+  fun debug_print packet =
+       let val pdata = B.Dyn_Array.read packet
+	   val header = "\neth.tim: making outgoing \n"
+	   val dlen = ByteArray.length pdata
+	   val format = [B.Format.String header,
+			 B.Format.String "\ndata =",
+			 B.Format.Bytes (min (40, dlen)),
+			 B.Format.String "...\n"]
+       in local_print (fold op^ (B.Format.bytearray (format, pdata, 0)) "")
+       end
+
+  fun make_packet (connection, data) =
+       let val size = ByteArray.length data
+	   val (packet, send) = Eth.allocate_send (connection, size)
+       in B.Dyn_Array.update (packet, 0, data);
+	  Trace.do_if_debug (fn _ => debug_print packet);
+          send
+       end
+
+  datatype check_data = All | Some | None
+
+  fun check_data (check, data, found) =
+       (case check of
+           None => Valid
+	 | Some =>
+	    let val d = B.Dyn_Array.sub (found, 0, 2)
+	    in if B.Access.compare_ranges
+	           ((data, B.Access.Range {first = 0, last = 2}),
+		    (d, B.Access.Range {first = 0, last = 2})) then Valid
+	       else Invalid
+	    end
+	 | _ =>		(* All *)
+	    let val d = B.Dyn_Array.read found
+	        val len = ByteArray.length data
+	    in if B.Access.compare_ranges
+	          ((data, B.Access.Range {first = 0, last = len}),
+		   (d, B.Access.Range {first = 0, last = len})) then Valid
+	       else Invalid
+	    end)
+
+  (* Nothing else to check for ethernet. *)
+  fun check_other (data, packet) = Valid
+
+  val get_byte = B.Dyn_Array.sub1
+
+  val byte = get_byte
+
+  fun start_test () = ()
+
+  val stop_test = start_test
+
+  exception Bad_Ip_Address of ubyte4 * string
+
+  fun translate_address ip =
+       let val eth = Test_Addresses.ip_eth ip
+       in case eth of
+             NONE =>
+	      raise (Bad_Ip_Address (ip, "eth.tim: can't find an ethernet " ^
+				     "address for this ip address."))
+	   | SOME {a0, a1, a2, a3, a4, a5} =>
+	      P.Address {a0 = a0, a1 = a1, a2 = a2, a3 = a3, a4 = a4, a5 = a5,
+			 proto = protocol_number}
+       end
+
+  fun makestring_packet packet =
+       let val p = B.Dyn_Array.read packet
+       in B.V.String.concat
+	 (B.Format.bytearray ([B.Format.String "Packet: ",
+			       B.Format.Bytes (min (100, ByteArray.length p)),
+			       B.Format.String "\n"],p,0))
+       end
+
+  fun on_connection _ = ()
+
+  val min_packet = 46
+
+  val size = FoxWord32.from_int o B.Dyn_Array.size
+
+end
+

@@ -1,0 +1,2 @@
+Decl 2
+(b f%Tcp_Action (l (h (d (a s%Trace (i f%Trace (h (a s%V (g s%B.V) 0)) F) 0) (f s%Trace s%B s%Tcp_Tcb s%FoxWord16) (a s%Timer (i f%Timer (h (a s%Scheduler (g s%B.Scheduler) 0)) F) 0) (f s%ByteArray s%FoxMakestring s%FoxWord32 s%Trace s%Tcp_Tcb s%SW s%System s%B s%FoxWord8 s%B s%FoxWord16))) (g s$TCP_ACTION) 0 (h (d (a s%Tcp_Tcb (g s$TCP_TCB) 0) (a s%B (g s$FOX_BASIS) 0) (f s%Tcp_Tcb s%B)))))

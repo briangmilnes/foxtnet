@@ -1,0 +1,440 @@
+(*
+
+	FoxNet: The Fox Project's Communication Protocol Implementation Effort
+	Edoardo Biagioni (Edoardo.Biagioni@cs.cmu.edu)
+	Ken Cline (Kenneth.Cline@cs.cmu.edu)
+	Fox Project
+	School of Computer Science
+	Carnegie Mellon University
+	Pittsburgh, Pa 15213-3891
+
+		i.	Abstract
+
+	oddwordarray.str: word arrays other than the
+	standard power-of-two-byte sized ones.
+
+		ii.	Table of Contents
+
+	i.	Abstract
+	ii.	Table of Contents
+	iii.	RCS Log
+	1.	signature SEQ_BASICS
+	2.	functor Array_Seq
+	3.	functor Rev_Array_Seq
+	4.	functor Odd_Word_Array
+	5.	functor Odd_Word_Array
+	6.	structure Word24_Array
+	7.	structure Word48_Array
+
+		iii.	RCS Log
+	
+$Log: oddwordarray.str,v $
+Revision 1.6  1997/11/14  11:55:19  cline
+changed rigid sharing constraing to where type
+
+Revision 1.5  96/04/25  20:35:06  esb
+major re-implementation, only partly debugged, checked in for sharing.
+
+Revision 1.4  1996/02/06  23:42:50  esb
+added Word24_Array.
+
+Revision 1.3  1996/01/19  23:07:31  esb
+adapted to the new wordarray signature.
+
+Revision 1.2  1996/01/15  18:00:49  cline
+removed FoxWord
+
+Revision 1.1  1995/11/12  16:47:20  esb
+Initial revision
+
+		1.	signature SEQ_BASICS
+*)
+
+signature SEQ_BASICS =
+ sig
+  type element
+  type T
+  type U
+  exception Empty
+  val make: Word.word -> T
+  val length: T -> Word.word
+  val next: T -> (element * T) option
+  val seek: T * Word.word -> T
+  val update: U * element -> U option
+  val write: T -> U option
+  val read: U -> T
+ end
+
+(*
+		2.	functor Array_Seq
+
+	Provides the functions required of an ARRAY_SEQ which are not
+	in SEQ_BASICS.
+*)
+
+functor Array_Seq (structure Basics: SEQ_BASICS
+		   val reverse: Basics.T -> Basics.T
+		   val element_equal: Basics.element * Basics.element -> bool
+		   val element_less: Basics.element * Basics.element
+		                   -> bool): ARRAY_SEQ =
+ struct
+
+  open Basics
+
+  fun new f value =
+       let fun get_loop value =
+	        case f value of
+	           NONE => []
+		 | SOME (element, new_value) =>
+		    element :: get_loop new_value
+	   val elements = get_loop value
+	   val number = Word.fromInt (List.length elements)
+	   val result = make number
+	   fun create_loop (_, []) = ()
+	     | create_loop (NONE, _) = ()
+	     | create_loop (SOME writable, head :: tail) =
+	        create_loop (update (writable, head), tail)
+       in if number > 0w0 then
+	   (create_loop (write result, elements);
+	    result)
+	  else make 0w0
+       end
+
+  fun head array =
+       case Basics.next array of
+	  NONE => raise Basics.Empty
+	| SOME (h, _) => h
+
+  fun tail array =
+       case Basics.next array of
+	  NONE => raise Basics.Empty
+	| SOME (_, t) => t
+
+  fun nth (array, count) =
+       case Basics.next (Basics.seek (array, count)) of
+	  NONE => raise Basics.Empty
+	| SOME (first, rest) => first
+
+  fun isempty array =
+       case Basics.next array of NONE => true | _ => false
+
+  fun wait _ = ()		(* return immediately, since not lazy *)
+
+  fun map f array =
+       let fun loop NONE = NONE
+	     | loop (SOME (first, rest)) =
+	        SOME (f first, Basics.next rest)
+       in new loop (Basics.next array)
+       end
+
+  fun app f =
+       let fun loop NONE = ()
+	     | loop (SOME (first, rest)) =
+	        (f first;
+		 loop (Basics.next rest))
+       in loop o Basics.next
+       end
+
+  fun fold f first array =
+       let fun loop (NONE, accumulator) = accumulator
+	     | loop (SOME (first, rest), accumulator) =
+	        loop (Basics.next rest, f (first, accumulator))
+       in loop (Basics.next array, first)
+       end
+
+  fun filter f array =
+       let fun new_next NONE = NONE
+	     | new_next (SOME (first, rest)) =
+	        case f first of
+		   NONE => new_next (Basics.next rest)
+		 | SOME value => SOME (value, Basics.next rest)
+       in new new_next (Basics.next array)
+       end
+
+  fun create (element, count) =
+       let val data = Basics.make count
+	   fun loop NONE = data
+	     | loop (SOME writable) = loop (Basics.update (writable, element))
+       in loop (Basics.write data)
+       end
+
+  val create_uninitialized = Basics.make
+
+  fun tabulate (element_fun, count) =
+       let val data = Basics.make count
+	   fun loop (_, NONE) = data
+	     | loop (index, SOME writable) =
+	        loop (index + 0w1, Basics.update (writable, element_fun index))
+       in loop (0w0, Basics.write data)
+       end
+
+  fun append (array1, array2) =
+       let fun iter (NONE, false) = NONE
+	     | iter (NONE, true) = iter (Basics.next array2, false)
+	     | iter (SOME (first, rest), is_first) =
+	        SOME (first, (Basics.next rest, is_first))
+       in new iter (Basics.next array1, true)
+       end
+
+  val reverse = reverse
+
+  fun equal (array1, array2) =
+       case (Basics.next array1, Basics.next array2) of
+	  (NONE, NONE) => true
+	| (SOME (first1, rest1), SOME (first2, rest2)) =>
+	   element_equal (first1, first2) andalso equal (rest1, rest2)
+	| _ => false
+
+  (* lexicographic comparison:  aaz < ab < aba *)
+  fun less (array1, array2) =
+       case (Basics.next array1, Basics.next array2) of
+	  (NONE, NONE) => false
+	| (NONE, _) => true
+	| (SOME (first1, rest1), SOME (first2, rest2)) =>
+	   element_less (first1, first2) orelse
+	   (element_equal (first1, first2) andalso less (rest1, rest2))
+	| _ => false
+ end
+
+(*
+		3.	functor Rev_Array_Seq
+*)
+
+functor Rev_Array_Seq (structure Fwd: SEQ_BASICS
+		       structure Rev: SEQ_BASICS
+			sharing type Fwd.T = Rev.T
+		            and type Fwd.element = Rev.element
+		            and type Fwd.U = Rev.U
+		       val eq: Fwd.element * Fwd.element -> bool
+		       val less: Fwd.element * Fwd.element
+			       -> bool): REV_ARRAY_SEQ =
+ struct
+  type T = Fwd.T
+  type U = Fwd.U
+  type element = Fwd.element
+
+  fun reverse array =
+       let val new = Fwd.make (Rev.length array)
+           fun init (NONE, _) = ()
+	     | init (_, NONE) = ()
+	     | init (SOME (head, rest), SOME writable) =
+	        init (Rev.next rest, Fwd.update (writable, head))
+       in init (Rev.next array, Fwd.write new);
+	  new
+       end
+
+  structure F: ARRAY_SEQ =
+   struct
+    local
+     structure AS = Array_Seq (structure Basics = Fwd
+			       val reverse = reverse
+			       val element_equal = eq
+			       val element_less = less)
+    in
+     open AS
+    end
+   end
+
+  structure R: ARRAY_SEQ =
+   struct
+    local
+     structure AS = Array_Seq (structure Basics = Rev
+			       val reverse = reverse
+			       val element_equal = eq
+			       val element_less = less)
+    in
+     open AS
+    end
+   end
+
+ end
+
+
+(*
+		4.	functor Odd_Word_Array
+*)
+
+functor Odd_Basics (structure W: FOXWORD
+		    structure W8: ARRAY_SEQ where type element = Word8.word
+		    val size (* in bytes *) : Word.word;
+		    val listword: W8.element list -> W.word
+		    val wordlist: W.word -> W8.element list): SEQ_BASICS =
+ struct
+  type element = W.word
+  type T = W8.T
+  type U = W8.U * Word.word
+
+  fun w8_new f ([], arg) =
+       (case f arg of
+	   NONE => NONE
+	 | SOME (v, new_arg) =>
+	    w8_new f (wordlist v, new_arg))
+    | w8_new f (first :: rest, arg) =
+       SOME (first, (rest, arg))
+
+  fun new f arg = W8.new (w8_new f) ([], arg)
+
+  fun make count = W8.create (Word8.fromInt 0, count * size)
+
+  fun length array = W8.length array * size
+
+  fun next array =
+       let exception Finished
+	   fun collectn (0w0, _) = []
+	     | collectn (n, array) =
+	        case W8.next array of
+		   NONE => raise Finished
+		 | SOME (first, rest) =>
+		    first :: collectn (n - 0w1, rest)
+       in (SOME (listword (collectn (size, array)),
+		 W8.seek (array, size)))
+	  handle Finished => NONE
+       end
+
+  fun seek (array, count) = W8.seek (array, count * size)
+
+  local structure S: sig exception Empty end = W8 in open S end
+
+  fun update ((array, length), value) =
+       let fun updaten ([], array) =
+	        if length > 0w1 then SOME (array, length - 0w1) else NONE
+	     | updaten (head :: rest, array) =
+		case W8.update (array, head) of
+		   NONE => NONE
+		 | SOME new_array => updaten (rest, new_array)
+       in updaten (wordlist value, array)
+       end
+
+  fun write array =
+       case (length array, W8.write array) of
+	  (0w0, _) => NONE
+	| (_, NONE) => NONE
+	| (n, SOME writable) => SOME (writable, n)
+
+  fun read (array, length) = W8.read array
+
+ end
+
+(*
+		5.	functor Odd_Word_Array
+*)
+
+functor Odd_Word_Array (structure W: FOXWORD
+			val size: Word.word): ODD_WORD_ARRAY =
+ struct
+
+  val zero = W.fromInt 0
+  val byte_mask = W.fromInt 255
+
+  val word_to_w8 = Word8.fromInt o W.toInt
+  val w8_to_word = W.fromInt o Word8.toInt
+
+  fun listword_big list =
+       let fun make_word ([], result) = result
+	     | make_word (first :: rest, partial) =
+	        make_word (rest, W.orb (W.<< (partial, 0w8),
+					   w8_to_word first))
+       in make_word (list, zero)
+       end
+  val listword_little = listword_big o rev
+
+  fun wordlist_little word =
+       let fun make_list (0w0, _) = []
+	     | make_list (n, word) =
+	        word_to_w8 (W.andb (word, byte_mask)) ::
+		make_list (n - 0w1, W.>> (word, 0w8))
+       in make_list (size, word)
+       end
+  val wordlist_big = rev o wordlist_little
+
+  structure W8F = Word_Array.W8.U_Big.F
+  structure W8R = Word_Array.W8.U_Big.R
+
+  fun eq (a: W.word, b) = a = b
+  fun less (a, b) = W.< (a, b)
+
+  structure Fwd_Basics_Little = Odd_Basics (structure W = W
+					    structure W8 = W8F
+					    val size = size
+					    val listword = listword_little
+					    val wordlist = wordlist_little)
+  structure Rev_Basics_Little = Odd_Basics (structure W = W
+					    structure W8 = W8R
+					    val size = size
+					    val listword = listword_big
+					    val wordlist = wordlist_big)
+
+  structure Fwd_Basics_Big = Odd_Basics (structure W = W
+					 structure W8 = W8F
+					 val size = size
+					 val listword = listword_big
+					 val wordlist = wordlist_big)
+  structure Rev_Basics_Big = Odd_Basics (structure W = W
+					 structure W8 = W8R
+					 val size = size
+					 val listword = listword_little
+					 val wordlist = wordlist_little)
+
+  structure Native = Rev_Array_Seq (structure Fwd = Fwd_Basics_Little
+				    structure Rev = Rev_Basics_Little
+				    val eq = eq
+				    val less = less)
+  structure Big = Rev_Array_Seq (structure Fwd = Fwd_Basics_Big
+				 structure Rev = Rev_Basics_Big
+				 val eq = eq
+				 val less = less)
+  structure Little = Native
+  structure F_Big = Big.F
+  structure F_Little = Little.F
+  structure R_Big = Big.R
+  structure R_Little = Little.R
+
+  structure U_Big = Big
+  structure U_Little = Little
+
+  type T = U_Big.T
+  type element = U_Big.element
+
+  val native_big_endian = false
+
+  fun unalign x = x
+  val unalign_f = unalign
+  val unalign_r = unalign
+
+  fun align_f array =
+       let val wa = Word_Array.from8 array
+	   val front = Word_Array.alignment_f wa mod size
+       in W8F.seek (array, size - front)
+       end
+
+  fun align_r array =
+       let val wa = Word_Array.from8 array
+	   val back = (Word_Array.alignment_r wa + 0w1) mod size
+       in W8R.seek (array, back)
+       end
+
+  fun align array =
+       let val wa = Word_Array.from8 array
+	   val front = Word_Array.alignment_f wa mod size
+           val back  = (Word_Array.alignment_r wa + 0w1) mod size
+       in W8F.seek (W8R.seek (array, back), size - front)
+       end
+
+  val from = Word_Array.from8
+  val to = Word_Array.to8
+ end
+
+(*
+		6.	structure Word24_Array
+*)
+
+structure Word24_Array = Odd_Word_Array (structure W = Word24
+					 val size = 0w3)
+
+(*
+		7.	structure Word48_Array
+*)
+
+structure Word48_Array = Odd_Word_Array (structure W = Word48
+					 val size = 0w6)
+

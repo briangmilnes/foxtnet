@@ -1,0 +1,510 @@
+(*
+
+	FoxNet: The Fox Project's Communication Protocol Implementation Effort
+	Edo Biagioni (esb@cs.cmu.edu)
+	Ken Cline (Kenneth.Cline@cs.cmu.edu)
+	Brian Milnes (milnes@cs.cmu.edu)
+	Fox Project
+	School of Computer Science
+	Carnegie Mellon University
+	Pittsburgh, Pa 15139-3891
+
+	i.	Abstract
+
+	demo.fun: A functor for showing that the protocols work.
+
+---------------------------------------------------------------------
+
+	ii.	Table of Contents
+
+	i.	Abstract
+	ii.	Table of Contents
+	iii.	RCS Log
+	1.	structure Sort_String
+	2.	structure Random_Bool
+	3.	signature DEMO
+	4.	functor Demo
+	5.	standard stacks
+	6.	non-standard stacks
+	7.	structures Ip_Demo and Eth_Demo
+
+	iii.	RCS Log
+
+$Log: demo.str,v $
+Revision 1.11  1996/04/18  21:31:52  cline
+updated to match new TIME signature
+
+Revision 1.10  1996/03/05  20:16:09  cline
+adapted for use with new simple.fun DNS interface
+
+Revision 1.9  1996/02/27  16:42:37  cline
+cleaned up initialization code
+
+Revision 1.8  1996/02/15  19:09:57  esb
+adapted to new structures.
+
+Revision 1.7  1996/02/07  19:18:42  cline
+removed call to B.Scheduler.reset and adapted to new word uses
+
+Revision 1.6  1996/01/16  21:56:24  cline
+*** empty log message ***
+
+Revision 1.5  1996/01/15  18:00:49  cline
+removed FoxWord
+
+Revision 1.4  1995/11/12  16:40:43  esb
+made the interface be "ln0", as needed on Alphas.
+
+Revision 1.3  1995/11/08  23:10:27  cline
+*** empty log message ***
+
+Revision 1.2  1995/10/03  19:52:25  cline
+*** empty log message ***
+
+Revision 1.1  1995/06/20  17:20:09  esb
+Initial revision
+
+Revision 1.7  1995/03/10  03:49:57  esb
+adapted to new vendor.sig.
+
+Revision 1.6  1995/02/04  20:39:19  robby
+updated to 107
+
+Revision 1.5  1994/11/07  21:34:56  cline
+use V.Print
+
+Revision 1.4  1994/11/01  15:57:52  cline
+removed FoxWord for demo (temporary)
+
+Revision 1.3  1994/10/31  18:59:05  esb
+added the game and sort demos
+
+Revision 1.2  1994/10/27  20:28:09  cline
+added SML/NJ 105 compatibility
+
+Revision 1.1  1994/10/26  13:31:43  esb
+Initial revision
+
+
+	1.	structure Sort_String
+*)
+
+structure Sort_String =
+ struct
+  local
+
+   val op<<< = Char.<
+   infix <<<
+
+   fun bubble_step (c, []) = ([c], true)
+     | bubble_step (c, head :: rest) =
+        let val (first, second, inorder) =
+	           if head <<< c then (head, c, false)
+		   else                (c, head, true)
+	    val (sorted, inorder_rest) = bubble_step (second, rest)
+	 in (first :: sorted, inorder andalso inorder_rest)
+	 end
+
+  in (* local *)
+
+   fun bubble_pass string =
+	case Fox_Basis.V.String.explode string of
+	   [] => ("", true)
+	 | head :: rest =>
+	    let val (ordered, done) = bubble_step (head, rest)
+	    in (Fox_Basis.V.String.implode ordered, done)
+	    end
+
+   fun bubble_sort string =
+        let fun loop_until_sorted (string, true) = string
+	      | loop_until_sorted (string, false) =
+		 (Fox_Basis.V.Print.print (string ^ "\n");
+		  loop_until_sorted (bubble_pass string))
+	in loop_until_sorted (bubble_pass string)
+	end
+
+  end (* local *)
+ end
+
+(*
+	2.	structure Random_Bool
+
+	The code is taken from the SML/NJ standard library, and
+	adapted to return bools instead of reals.
+*)
+
+structure Random_Bool =
+ struct
+  local
+   structure Time = Fox_Basis.V.Time
+   val seed = ref (Time.timeToReal (Time.now ()))
+
+      (*real number version for systems with 46-bit mantissas*)
+   val a = 16807.0  and  m = 2147483647.0
+
+   fun new_random () =
+        let val t = a * (! seed)
+	    val new_seed = t - m * real (floor (t / m))  
+	in seed := new_seed;
+	   new_seed
+	end
+
+    fun norm r = r / m
+
+  in (* local *)
+
+   fun next () = norm (new_random ()) >= 0.5
+
+  end (* local *)
+ end
+
+(*
+	3.	signature DEMO
+*)
+
+signature DEMO =
+ sig
+  val external: string * int -> unit
+  val active: string -> unit
+  val passive: unit -> unit
+  val serve_game: int -> unit
+  val play: string -> unit
+ end (* sig *)
+
+(*
+	4.	functor Demo
+*)
+
+functor Demo (structure Tcp: TCP_PROTOCOL
+	      val setup: Tcp.Setup.T): DEMO =
+  struct
+    structure B = Fox_Basis;
+
+    exception Hostname_Lookup
+    fun name_to_ip name = (case Tcp.Host_Id.parse name of
+			     SOME h => h
+			   | NONE => raise Hostname_Lookup)
+
+    fun local_print s = B.V.Print.print ("demo.fun: " ^ s ^ "\n")
+
+    val clean_up_delay = 500
+
+    fun packet_to_string p =
+      let fun list_char (w, l) = (Char.chr (Word8.toInt w))::l
+	  fun array_to_string a =
+	       String.implode (Word_Array.W8.U_Big.R.fold list_char [] a)
+      in array_to_string (Word_Array.to8
+			  (Tcp.Incoming.sub
+			   (p, {start = 0w0, length = Tcp.Incoming.size p})))
+      end
+
+    fun string_to_packet s =
+         let fun nth_of_s n =
+	       Word8.fromInt (Char.ord (String.sub (s, Word.toInt n)))
+         in Tcp.Outgoing.new (Word_Array.from8
+			      (Word_Array.W8.U_Big.F.tabulate
+			       (nth_of_s, Word.fromInt (size s))))
+         end
+
+    fun packet_to_int p =
+      Word8.toInt (Word_Array.W8.U_Big.F.head
+		   (Word_Array.to8 (Tcp.Incoming.sub
+				    (p, {start=0w0, length=0w1}))))
+
+    fun int_to_packet i =
+      Tcp.Outgoing.new (Word_Array.from8
+			(Word_Array.W8.U_Big.F.create
+			 (Word8.fromInt i, 0w1)))
+
+    fun active_session (name, port, session_fun) =
+      (Tcp.session
+         (setup, session_fun (Tcp.Transport_Address.Remote_Specified
+			      {peer = name_to_ip name, remote_port = port}))
+       handle x => (B.Scheduler.sleep clean_up_delay; raise x);
+       B.Scheduler.sleep clean_up_delay)
+
+    fun passive_session (port, session_fun) =
+      (Tcp.session (setup, session_fun (Tcp.Transport_Pattern.Local_Specified
+					{local_port = port}))
+       handle x => (B.Scheduler.sleep clean_up_delay; raise x);
+       B.Scheduler.sleep clean_up_delay)
+
+    fun external (remote_host, count) =
+      let
+	val done_pipe = B.Pipe.new ()
+	fun done () = B.Pipe.enqueue (done_pipe, ())
+
+	fun connection_handler _ = B.Pipe.dequeue done_pipe
+
+	fun data_handler (_, packet) = print (packet_to_string packet)
+
+	fun status_handler _ = done ();
+
+	fun loop (0, _) = ()
+	  | loop (n, f) = (f (); loop (n-1, f))
+
+	fun handler _ = {connection_handler = connection_handler,
+			 data_handler = data_handler,
+			 status_handler = status_handler}
+
+	fun external_session address (Tcp.S {connect, ...}) =
+	  loop (count, fn () => connect (address, Tcp.H handler))
+      in
+	active_session (remote_host, Word16.fromInt 13, external_session)
+      end
+
+    fun passive () =
+      let
+        val connection_pipe = B.Pipe.new ()
+	val session_pipe = B.Pipe.new ()
+	fun done () = B.Pipe.enqueue (connection_pipe, ())
+
+	fun connection_handler _ =
+	  B.Pipe.enqueue (session_pipe, B.Pipe.dequeue connection_pipe)
+
+	fun data_handler (Tcp.C {send, ...}, packet) =
+	  let
+	    val s = packet_to_string packet
+	    val (s', complete) = Sort_String.bubble_pass s
+	  in
+	    print ("received " ^ s ^ "\n");
+	    send (string_to_packet s');
+	    if complete then (print "passive done!\n"; done ()) else ()
+	  end
+
+	fun status_handler _ = done ()
+
+	fun handler _ = {connection_handler = connection_handler,
+			 data_handler = data_handler,
+			 status_handler = status_handler}
+
+	fun session_fn pattern (Tcp.S {listen, ...}) =
+	  (listen (pattern, Tcp.H handler, Tcp.Count.Maximum 1);
+	   B.Pipe.dequeue session_pipe)
+      in
+	passive_session (Word16.fromInt 12345, session_fn)
+      end
+
+    fun active remote_host =
+      let
+	fun read_string prompt =
+	  case (Fox_Basis.V.Print.print "enter a string to be sorted > ";
+		case (IO.input_line IO.std_in) handle _ => " " of
+		  s => substring (s, 0, Fox_Basis.V.String.length s - 1)) of
+	    "" => read_string prompt
+	  | s => s
+
+	val anagram = read_string "enter a string to be sorted > "
+	val done_pipe = B.Pipe.new ()
+	fun done () = B.Pipe.enqueue (done_pipe, ())
+
+	fun connection_handler (Tcp.C {send, ...}) =
+	    (send (string_to_packet anagram);
+	     B.Pipe.dequeue done_pipe)
+
+	fun data_handler (Tcp.C {send, ...}, packet) =
+	  let
+	    val s = packet_to_string packet
+	    val (s', complete) = Sort_String.bubble_pass s
+	  in
+	    print ("received " ^ s ^ "\n");
+	    if complete
+	      then done ()
+	    else send (string_to_packet s')
+	  end
+
+	fun status_handler _ = done ()
+
+	fun handler _ = {connection_handler = connection_handler,
+			 data_handler = data_handler,
+			 status_handler = status_handler}
+
+	fun session_fn address (Tcp.S {connect, ...}) =
+	  connect (address, Tcp.H handler)
+      in
+	active_session (remote_host, Word16.fromInt 12345, session_fn)
+      end
+
+    fun serve_game initial_count =
+      if initial_count > 100 then
+	local_print "error: argument to serve_game should be less than 100"
+      else
+	let
+	  val count = ref initial_count
+	  val done_pipe = B.Pipe.new ()
+	  val conn_pipe = B.Pipe.new ()
+	  fun done () = B.Pipe.enqueue (conn_pipe, ())
+
+	  fun print_sticks () =
+	    print ("There are " ^ makestring (!count) ^ " sticks.\n");
+
+	  fun connection_handler (Tcp.C {send, ...}) =
+	    (print_sticks ();
+	     send (string_to_packet
+		    ("There are " ^ makestring (!count) ^
+		     " sticks - try to take the last one.\n" ^
+		     "How many sticks do you take?\n"));
+	     B.Pipe.enqueue (done_pipe, B.Pipe.dequeue conn_pipe))
+
+	  fun data_handler (Tcp.C {send, ...}, packet) =
+	    let
+	      val your_move = packet_to_int packet
+	      val my_move = if Random_Bool.next () then 1 else 2
+	      val message = ref ("You took " ^ makestring your_move)
+	      fun send_string s = send (string_to_packet s)
+	    in
+	      count := (!count) - your_move;
+	      print_sticks ();
+	      if !count < 0 then
+		(send_string "You took too many sticks.  I quit!\n";
+		 done ())
+	      else 
+	        (message := (!message ^
+			     ", leaving " ^ makestring (!count) ^ ".\n");
+		 if !count = 0 then
+		   (send_string (!message ^ "You win!\n");
+		    done ())
+		 else
+		   (count := !count - my_move;
+		    print_sticks ();
+		    if !count < 0 then
+		      (send_string (!message ^
+				    "I take 1, leaving 0.\n I win!\n");
+		       done ())
+		    else message := (!message ^
+				     "I take " ^ makestring my_move ^
+				     ", leaving " ^ makestring (!count) ^
+				     ".\n");
+		      if !count = 0 then
+			(send_string (!message ^ "I win!\n");
+			 done ())
+		      else
+			send_string (!message ^
+				     "How many sticks do you take?\n")))
+	    end
+
+	  fun status_handler _ = done ()
+
+	  fun handler _ = {connection_handler = connection_handler,
+			   data_handler = data_handler,
+			   status_handler = status_handler}
+
+	  fun serve_session pattern (Tcp.S {listen, ...}) =
+	    (listen (pattern, Tcp.H handler, Tcp.Count.Maximum 1);
+	     B.Pipe.dequeue done_pipe)
+
+	in
+	  passive_session (Word16.fromInt 12345, serve_session)
+	end
+
+    exception Bad_Input
+    fun odd_even_enter 0 =
+      (local_print "too many wrong entries, aborting";
+       raise Bad_Input)
+      | odd_even_enter max_count =
+      (B.V.Print.print "enter 1 or 2 > ";
+       let val raw_input = (IO.input_line IO.std_in) handle _ => ""
+	 fun find_input [] = NONE
+	   | find_input (#"1" :: rest) = SOME 1
+	   | find_input (#"2" :: rest) = SOME 2
+	   | find_input (head :: rest) = find_input rest
+       in case find_input (B.V.String.explode raw_input) of
+	 NONE =>
+	   (local_print "invalid input, neither 1 nor 2 found";
+	    odd_even_enter (max_count - 1))
+       | SOME n => n
+       end)
+
+    fun play remote_host =
+      let
+	val done_pipe = B.Pipe.new ()
+	fun done () = B.Pipe.enqueue (done_pipe, ())
+
+	fun connection_handler _ = B.Pipe.dequeue done_pipe
+
+	fun data_handler (Tcp.C {send, ...}, packet) =
+	  let
+	    val message = packet_to_string packet
+	    val tail = substring (message, size message - 2, 1)
+	  in
+	    print message;
+	    if tail <> "!" then
+	      send (int_to_packet (odd_even_enter 5))
+	    else ()
+	  end
+	  handle _ => 
+	    (local_print "bad input, closing connection"; done ())
+
+	fun status_handler _ =
+	  done ()
+
+	fun handler _ = {connection_handler = connection_handler,
+			 data_handler = data_handler,
+			 status_handler = status_handler}
+
+	fun play_session address (Tcp.S {connect, ...}) =
+	  connect (address, Tcp.H handler)
+      in
+	active_session (remote_host, Word16.fromInt 12345, play_session)
+      end
+
+ end (* struct *)
+
+(*
+	5.	standard stacks
+*)
+
+structure Dev = Dev_Protocol ();
+
+structure Dev_Meter = Dev_Meter_Protocol
+			(structure Dev = Dev
+			 val label = Initialize.Ip.local_hostname ());
+
+structure Eth = Eth_Protocol (structure Dev = Dev (* _Meter *) );
+
+structure Arp = Arp_Protocol (structure Eth = Eth);
+
+structure Ip = Ip_Protocol (structure Arp = Arp);
+
+val ip_setup = Ip.Network_Setup.Setup (Initialize.Ip.setup ())
+
+structure Tcp = Tcp_Protocol (structure Lower = Ip
+			      val compute_checksums = true
+			      val protocol_number = Word8.fromInt 6);
+structure Udp = Udp_Protocol (structure Lower = Ip
+			      val protocol_number = Word8.fromInt 17);
+
+structure Lookup = Hostname_Lookup (structure Udp = Udp);
+
+structure Tcp_Lookup = Tcp_Lookup_Protocol(structure Tcp = Tcp
+					   val lookup = Lookup.lookup)
+
+(*
+	6.	non-standard stacks
+*)
+
+(*
+structure Tcpx = Tcp_Protocol (structure Lower = Len
+			       val checksum = false);
+*)
+structure Pseudo_Ip = Pseudo_Ip_Protocol (structure Eth = Eth);
+val pseudo_ip_setup = Pseudo_Ip.Network_Setup.Setup
+			[{local_id = (Word48_Array.Big.F.head
+				      (Word48_Array.to
+				       (Initialize.Eth.local_address ()))),
+			  interface = "ln0", gateways = [],
+			  mask = NONE, mtu = NONE}]
+structure Tcpx = Tcp_Protocol (structure Lower = Pseudo_Ip
+			       val compute_checksums = false
+			       val protocol_number = Word16.fromInt 6);
+structure Udpx = Udp_Protocol (structure Lower = Pseudo_Ip
+			       val protocol_number = Word16.fromInt 17);
+
+(*
+	7.	structures Ip_Demo and Eth_Demo
+*)
+
+structure Ip_Demo = Demo (structure Tcp = Tcp_Lookup
+			  val setup = ip_setup);
+structure Eth_Demo = Demo (structure Tcp = Tcpx
+			   val setup = pseudo_ip_setup);

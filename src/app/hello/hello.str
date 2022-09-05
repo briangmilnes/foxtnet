@@ -1,0 +1,196 @@
+(*
+
+	FoxNet: The Fox Project's Communication Protocol Implementation Effort
+	Edoardo Biagioni (Edoardo.Biagioni@cs.cmu.edu)
+	Ken Cline (Kenneth.Cline@cs.cmu.edu)
+	Fox Project
+	School of Computer Science
+	Carnegie Mellon University
+	Pittsburgh, Pa 15139-3891
+
+		i.	Abstract
+
+
+
+		ii.	Table of Contents
+
+	i.	Abstract
+	ii.	Table of Contents
+	iii.	RCS Log
+	1.	functor Build_Hello
+	2.	Structure Hello
+
+		iii.	RCS Log
+	
+$Log: hello.str,v $
+Revision 1.2  1996/10/03  18:40:17  esb
+adapted to new builddns.fun.
+
+Revision 1.1  1996/09/16  18:01:24  cline
+Initial revision
+
+
+		1.	functor Build_Hello
+*)
+functor Build_Hello (val logfile: string
+		     structure Tcp: TRANSPORT_PROTOCOL
+		     val setup: Tcp.Setup.T
+		     val lookup: string -> Tcp.Host_Id.T option
+		     val pukool: Tcp.Host_Id.T -> string option) =
+struct
+
+  val hello_port = Word16.fromInt 8825
+
+  structure V = Fox_Basis.V
+  structure Hello = Hello (structure T = Tcp
+			   structure B = Fox_Basis
+			   val port = hello_port
+			   val setup = fn () => setup
+			   val lookup = lookup
+			   val pukool = pukool
+			   val timeout = 60000)
+
+  fun built_in_dialog "os" = SOME (SMLofNJ.SysInfo.getHostArch () ^ " "^
+				   SMLofNJ.SysInfo.getOSName () ^ " " ^
+				   SMLofNJ.SysInfo.getOSVersion ())
+    | built_in_dialog _ = NONE
+
+  structure Server =
+    struct
+      fun dialog "email" = "foxnet@cs.cmu.edu"
+	| dialog "purpose" = "demonstrates a networking system written in SML."
+	| dialog "comments" =
+	            "Thank you for your comments.  Enjoy the Fox Net!"
+	| dialog "name" = "The Fox Project"
+	| dialog "" = ""
+	| dialog s = (case built_in_dialog s of
+			SOME result => result
+		      | NONE => s)
+
+      val log = ref [] : (string*string) list ref
+      fun logger (_, NONE) =
+	(let
+	   val now = V.Time.toDate (V.Time.now ())
+	   val mode = Posix.FileSys.S.wordTo 0wx1a4
+	   val fd = Posix.FileSys.openf (logfile,
+					 Posix.FileSys.O_WRONLY,
+					 Posix.FileSys.O.append)
+	            handle _ => Posix.FileSys.creat (logfile, mode)
+	   fun write (q, s) =
+	     let
+	       val logs = q ^ ": " ^ s ^ "\n"
+	     in Posix.IO.writeVec (fd, {buf = Byte.stringToBytes logs,
+					i = 0, sz = NONE})
+	     end
+	 in
+	   map write (("start", "\n" ^ now ^ "\n") :: !log)
+	   handle x => (Posix.IO.close fd; raise x);
+	     Posix.IO.close fd;
+	     log := []
+	 end
+	   handle _ => (log := [];
+			V.Print.print ("Hello: error accessing log file (" ^
+				       logfile ^ ")\n")))
+	| logger (q, SOME s) = log := !log @ [(q, s)]
+    end
+
+  structure Client =
+    struct
+      fun getline () =
+	let val line = V.IO.input_line V.IO.std_in
+	    val l = V.String.length line - 1
+	in if l>=0 andalso V.String.ordof (line, l) = #"\n"
+	     then V.String.substring (line, 0, l)
+	   else line
+	end
+
+      fun getlines () =
+	let fun loop (prev, cur) =
+	          if cur="" then prev
+		  else loop (prev^cur^"\n", getline())
+	in loop ("", getline())
+	end
+
+      fun dialog_read "comments" = getlines ()
+	| dialog_read _ = getline ()
+
+      fun client_query "os" =
+	   "\nWhat machine and operating system are you using?\n"
+	| client_query "email" = "\nWhat is your email address?\n"
+	| client_query "purpose" =
+	   "\nWhy are you interested in the FoxNet (teaching, research, curiosity, ...)?\n"
+	| client_query "comments" =
+	   "\nPlease include any comments you have, terminated by a blank line:\n"
+	| client_query "name" = "\nWhat is your name?\n"
+	| client_query s = "\n" ^ s ^ "?\n"
+
+      fun server_query  "os" = "\n[Sending] My operating system is: "
+	| server_query "email" = "\nThe fox project's email address is: "
+	| server_query "purpose" = "\nThe FoxNet: "
+	| server_query "comments" = ""
+	| server_query "name" = "\nMy name is: "
+	| server_query "bye" = ""
+	| server_query "" = ""
+	| server_query s = "\n" ^ s ^ "?\n"
+
+      fun dialog query =
+	(V.Print.print (client_query query);
+	 case built_in_dialog query of
+	   SOME response => response
+	 | NONE => dialog_read query)
+    end
+
+  val hello_handler = Tcp.H (Hello.handler_fun
+			     (true, Server.dialog, Server.logger))
+
+  val client = Keyboard_Interrupts.protect
+                 (Hello.client (Client.server_query, Client.dialog))
+end
+
+(*
+	2.	Structure Hello
+*)
+structure Hello =
+  struct
+    local
+      structure B = Fox_Basis
+
+      structure Base = Build_Eth_Dev (structure B = Fox_Basis
+				      val debug_level = NONE)
+
+      structure Init = Initialize (structure Device = Base.Raw
+				   structure V = Fox_Basis.V
+(* use "val hostname_to_ip = fn _ => NONE" to force the use of system files
+   (e.g. /etc/* ) to figure out the local IP number. *)
+				   val hostname_to_ip =
+				         Hostname_Ip.hostname_to_ip 
+				   val interface_number = 0)
+
+      structure Stack = Build_Dns (structure Device = Base.Dev
+				   structure B = Fox_Basis
+				   val tcp_window_size = 4096
+				   val tcp_user_timeout = (* 5 minutes *)
+				         Word32.fromInt (5 * 60 * 1000)
+				   val udp_checksum = true
+				   val eth_debug_level = NONE
+				   val arp_debug_level = NONE
+				   val ip_debug_level = NONE
+				   val tcp_debug_level = NONE
+				   val udp_debug_level = NONE
+				   val dns_debug_level = NONE)
+
+      val transport_setup = Stack.Udp.Transport_Setup.Setup (Init.Ip.setup ())
+      val dns_setup = Init.Dns.setup transport_setup
+      val lookup = Stack.Dns_Lookup.lookup dns_setup
+      val pukool = Stack.Dns_Lookup.inverse_lookup dns_setup
+
+      structure Hello = Build_Hello (val logfile = "/dev/null"
+				     structure Tcp = Stack.Tcp
+				     val setup = transport_setup
+				     val lookup = lookup
+				     val pukool = pukool)
+    in
+      open Hello
+    end
+  end
+

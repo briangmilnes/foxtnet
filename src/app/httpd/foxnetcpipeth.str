@@ -1,0 +1,56 @@
+(*
+
+	FoxNet: The Fox Project's Communication Protocol Implementation Effort
+	Edoardo Biagioni (Edoardo.Biagioni@cs.cmu.edu)
+	Brian Milnes (Brian.Milnes@cs.cmu.edu)
+	Ken Cline (Kenneth.Cline@cs.cmu.edu)
+        Chris.Stone (Chris.Stone@cs.cmu.edu)
+	Fox Project
+	School of Computer Science
+	Carnegie Mellon University
+	Pittsburgh, Pa 15213-3891
+
+		i.	Abstract
+
+	A top level structure file for TCPIP built over Eth with
+        the foxnet.cs.cmu.edu IP address (128.2.198.4).
+
+
+		ii.	Table of Contents
+
+	i.	Abstract
+	ii.	Table of Contents
+	iii.	RCS Log
+	1.	structure FoxNet_Tcp_Ip_Eth
+
+		iii.	RCS Log
+	
+$Log: foxnetcpipeth.str,v $
+# Revision 1.1  1995/03/08  20:21:38  cstone
+# Initial revision
+#
+
+		1.	structure FoxNet_Tcp_Ip_Eth
+*)
+
+local
+ val foxnet_addressing =
+    [Addressing.Host_Value 
+     (Addressing.Host 
+      {name = "foxnet.cs.cmu.edu",
+       interfaces = [Addressing.Interface 
+                     {name="SEO",
+                      ip=4ux8002C604, (* 128.2.198.4 *)
+                      mask=NONE,
+                      gateways = [Addressing.Gateway
+                                  {name="gw.cs.cmu.edu",
+                                   ip=4ux8002FE24}]}]})]
+in
+ structure FoxNet_Tcp_Ip_Eth =
+   Build_Tcp_Ip_Eth (structure B = Fox_Basis
+		   structure Prot_Numbers = Default_Protocol_Numbers
+		   structure Addressing = Addressing
+                   val stack_address = foxnet_addressing
+		   val do_prints = false
+		   val do_traces = false)
+end

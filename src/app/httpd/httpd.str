@@ -1,0 +1,115 @@
+(*
+
+	FoxNet: The Fox Project's Communication Protocol Implementation Effort
+	Edoardo Biagioni (Edoardo.Biagioni@cs.cmu.edu)
+	Brian Milnes (Brian.Milnes@cs.cmu.edu)
+	Ken Cline (Kenneth.Cline@cs.cmu.edu)
+        Chris Stone (stone+@cmu.edu)
+	Fox Project
+	School of Computer Science
+	Carnegie Mellon University
+	Pittsburgh, Pa 15213-3891
+
+		i.	Abstract
+
+
+		ii.	Table of Contents
+
+	i.	Abstract
+	ii.	Table of Contents
+	iii.	RCS Log
+	1.	structure MakeTcpServer
+	2.	structure httpd
+        3.      function tcpipeth_info
+
+		iii.	RCS Log
+	
+$Log: httpd.str,v $
+# Revision 1.2  1995/03/08  20:24:15  cstone
+# Standard setup for public FoxNet server.
+#
+# Revision 1.1  1995/01/25  22:43:07  cstone
+# Initial revision
+#
+# Revision 1.1  1994/11/07  20:11:17  cstone
+# Initial revision
+#
+
+*)
+
+(*
+	1.	structure MakeServer
+*)
+
+structure HttpdStack = FoxNet_Tcp_Ip_Eth
+
+structure MakeTcpServer = MakeTcpServer(structure TcpStack = HttpdStack
+                                        structure B   = Fox_Basis)
+
+(*
+	2.	structure httpd
+*)
+
+structure httpd = Httpd(structure B   = Fox_Basis
+                        structure MakeTcpServer = MakeTcpServer
+                        val home_dir = "/afs/cs/project/fox/mosaic"
+                        val default_document = "index.html"
+                        val log_file         = "/usr/fox/httpd.log"
+	                val checkpoint_file  = "/usr/fox/bytes-served.ckpt"
+                        val redirect         = true
+                        val redirect_prefix  = "/afs"
+                        val redirect_server  = "http://www.cs.cmu.edu:8001");
+
+fun run_scheduler () = 
+  let val p = Fox_Basis.Pipe.new NONE : unit Fox_Basis.Pipe.T
+  in
+      Fox_Basis.Pipe.dequeue p
+  end;
+
+
+val makestring = Fox_Basis.V.Integer.makestring
+
+structure Bignum_Message = Bignum_Message(structure Ints = Word64)
+
+
+fun bytes_out _ _ = Bignum_Message.message 
+                      Bignum_Message.Capitalize
+                      (httpd.bytesout ())
+  (* MIPS  System.Control.Runtime.majorcollections *)
+  (* Alpha System.Runtime.majorcollections *)
+fun major_gc  _ _ = makestring (!System.Control.Runtime.majorcollections)
+fun minor_gc  _ _ = makestring (!System.Control.Runtime.minorcollections)
+fun gc_live   _ _ = makestring (!System.Control.Runtime.collected)
+fun gc_tot    _ _ = makestring (!System.Control.Runtime.collectedfrom)
+fun eth_acc   _ _ = FoxMakestring.word64
+                    (FoxWord64.- (HttpdStack.Eth.packets_received (),
+                                  HttpdStack.Eth.packets_rejected ()))
+fun eth_sent  _ _ = FoxMakestring.word64
+                    (HttpdStack.Eth.packets_sent ())
+fun ip_rcv    _ _ = makestring (HttpdStack.Ip.packets_received ())
+fun ip_sent   _ _ = makestring (HttpdStack.Ip.packets_sent ())
+fun days_up   _ _ = makestring (httpd.uptime () div 86400)
+fun hrs_up    _ _ = makestring ((httpd.uptime () mod 86400) div 3600)
+fun mins_up   _ _ = makestring ((httpd.uptime () mod 3600) div 60)
+fun accesses  _ _ = makestring (httpd.accesses())
+ 
+;
+
+fun run_server _ = 
+ (httpd.install ();
+  httpd.install_fn "bytes_out" bytes_out;
+  httpd.install_fn "major_gc"  major_gc;
+  httpd.install_fn "minor_gc"  minor_gc;
+  httpd.install_fn "eth_acc"   eth_acc;
+  httpd.install_fn "eth_sent"  eth_sent;
+  httpd.install_fn "ip_rcv"    ip_rcv;
+  httpd.install_fn "ip_sent"   ip_sent;
+  httpd.install_fn "days_up"   days_up;
+  httpd.install_fn "hrs_up"    hrs_up;
+  httpd.install_fn "mins_up"   mins_up;
+  httpd.install_fn "gc_live"   gc_live;
+  httpd.install_fn "gc_tot"    gc_tot;
+  httpd.install_fn "accesses"  accesses;
+(*  httpd.install_fn "runML"     runML;  *)
+  run_scheduler ();
+  ())

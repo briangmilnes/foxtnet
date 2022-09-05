@@ -1,0 +1,2 @@
+Decl 4
+qs$LINK_PARSER.sqsPosition.v$POSITION.;-;sParser.v$PARSER.;-;sInput.v$INPUT.;-;sParsing_Utils.v$PARSING_UTILS.;-;rPosition.Parser.Parsing_Utils.;;-;f%Link_Parser.f-sqsV.v$VENDOR.;-;;;sqsBase.a%Base.;ssV.vV.;-;;-;sPosition.a%Position.;sr;;-;sParser_Base.a%ContParser.;ssPosition.vPosition.;-;;-;sParser.a%Parser.;sqsBase.vBase.;-;sParserBase.vParser_Base.;-;;;-;sInput.a%Input.;sqsBase.vBase.;-;sV.vV.;-;;;-;sParsing_Utils.a%Parsing_Utils.;sqsV.vV.;-;sParser.vParser.;-;;;-;;-;;

@@ -1,0 +1,2 @@
+Decl 2
+(b f%Ethernet (l (h (d (a s%Trace (i f%Trace (h (a s%V (g s%B.V) 0)) F) 0) (f s%Trace s%Dev s%FoxWord64 s%B s%FoxWord32 s%SW s%FoxWord8 s%FoxWord16) (a s%Conn (i f%Connection (h (d (f s%Dev) (a s%Trace (g s%Trace) 0) (a s%B (g s%B) 0))) F) 0) (f s%FoxWord16 s%SW s%FoxWord8 s%ByteArray s%FoxWord64 s%System s%Dev s%Trace s%B s%Conn))) (g s$ETHERNET_PROTOCOL) 0 (h (d (a s%Dev (g s$DEVICE_PROTOCOL) 0) (a s%B (g s$FOX_BASIS) 0) (f s%Dev s%B)))))

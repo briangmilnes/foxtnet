@@ -1,0 +1,2 @@
+Decl 4
+qs$SIMPLE_EVENT_QUEUE.sq;-;s$EVENT_QUEUE.sq;-;;

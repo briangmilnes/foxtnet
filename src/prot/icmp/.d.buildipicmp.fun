@@ -1,0 +1,2 @@
+Decl 2
+(b f%Build_Ip_Icmp (l (h (d (c (d (a s%Icmp_Block (i f%Build_Icmp (h (d (a s%Device (g s%Device) 0) (a s%B (g s%B) 0))) F) 0)) (d (e s%Icmp_Block) (a s%Ip_No_Icmp (g s%Ip) 0))) (a s%Ip (i f%Ip_With_Icmp (h (d (a s%B (g s%B) 0) (a s%Ip (g s%Ip_No_Icmp) 0) (a s%Icmp (g s%Icmp) 0))) F) 0))) (g s$IP_ICMP_STACK) 0 (h (d (a s%Device (g s$DEVICE_PROTOCOL) 0) (a s%B (g s$FOX_BASIS) 0) (f s%Device s%B s%FoxWord16)))))

@@ -1,0 +1,8 @@
+[from Paul Parker, 22 Mar 96]
+
+CMU has a block of ethernet addresses.  Assign IPs as follows (I can
+reserve the assignments as they are seen on the net:)
+
+If a FOXnet machine has the IP address 128.2.xx.xx, make the hardware
+address 08-00-7F-00-xx-xx.
+

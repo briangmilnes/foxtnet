@@ -1,0 +1,2 @@
+Decl 2
+(d (b f%Dev_Real (l (h (c (d (a s%Trace (i f%Trace (h (a s%V (g s%B.V) 0)) F) 0) (f s%Trace s%SW s%ByteArray s%FoxWord8 s%FoxWord16 s%B s%FoxWord32 s%B) (c (d (a s%Base (i f%Build_Eth_Dev (h (a s%B (g s%B) 0)) F) 0)) (d (a s%Dev (g s%Base.Eth_Dev) 0))) (f s%System s%FoxWord16 s%FoxWord32 s%ByteArray s%FoxMakestring s%FoxWord8 s%Test_Addresses s%Trace s%B s%Dev s%Dev s%B)) (d (f s%B)))) 0 0 (h (d (a s%B (g s$FOX_BASIS) 0))))) (a s%Dev_Real (i f%Dev_Real (h (a s%B (g s%Fox_Basis) 0)) F) 0))

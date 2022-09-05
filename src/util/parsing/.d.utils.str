@@ -1,0 +1,2 @@
+Decl 2
+(b f%Parsing_Utils (l (h (f s%Parser s%V s%Parser)) (g s$PARSING_UTILS) 0 (h (d (a s%V (g s$VENDOR) 0) (a s%Parser (g s$PARSER) 0)))))

@@ -1,0 +1,59 @@
+(*
+
+	Fox Net: The Fox Project's Communication Protocol Implementation Effort
+	Edoardo Biagioni (Edoardo.Biagioni@cs.cmu.edu)
+	Ken Cline (Kenneth.Cline@cs.cmu.edu)
+	Brian Milnes (Brian.Milnes@cs.cmu.edu)
+        Nick Haines (Nick.Haines@cs.cmu.edu)
+	Fox Project
+	School of Computer Science
+	Carnegie Mellon University
+	Pittsburgh, Pa 15213-3891
+
+		i.	Abstract
+
+	HTTP server compilation manager file.
+
+
+		ii.	Table of Contents
+
+	i.	Abstract
+	ii.	Table of Contents
+	iii.	usage
+	iv.	RCS Log
+	1.	header
+	2.	declaration by reference
+	3.	exported structures
+
+		iii.	usage
+
+	to build under SML/NJ 107.7 or subsequent versions:
+	   fun m _ = CM.make' (CM.cmfile "httpd.cm");
+
+		iv.	RCS Log
+	
+$Log: httpd.cm,v $
+Revision 1.1  1997/03/10  19:09:45  esb
+Initial revision
+
+
+		1.	header
+*)
+
+Group is
+
+(*
+		2.	declaration by reference
+*)
+
+	foxnet.cm
+
+(*
+		3.	exported structures
+*)
+
+app/httpd/httpd.sig
+app/httpd/httpd.fun
+app/httpd/boast.sml
+app/httpd/httpd.tst
+

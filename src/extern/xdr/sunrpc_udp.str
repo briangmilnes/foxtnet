@@ -1,0 +1,50 @@
+(*
+
+	FoxNet: The Fox Project's Communication Protocol Implementation Effort
+	Edoardo Biagioni (Edoardo.Biagioni@cs.cmu.edu)
+	Brian Milnes (Brian.Milnes@cs.cmu.edu)
+	Ken Cline (Kenneth.Cline@cs.cmu.edu)
+        Nick Haines (Nick.Haines@cs.cmu.edu)
+	Kuo Chiang Chiang (kcchiang@cs.cmu.edu)
+	Fox Project
+	School of Computer Science
+	Carnegie Mellon University
+	Pittsburgh, Pa 15139-3891
+
+	i.	Abstract
+
+	This builds the structures required for Sun RPC over UDP.
+
+	ii.	Table of Contents
+
+	        (None)
+
+	iii.	RCS Log
+
+$Log: sunrpc_udp.str,v $
+Revision 1.2  1994/10/24  23:12:15  kcchiang
+remove extraneous arguments to Build_SunRPC_UDP
+
+Revision 1.1  94/10/14  12:00:00  kcchiang
+Initial revision
+
+*)
+
+val ip_over_eth = 2ux800
+val arp_over_eth = 2ux806
+
+structure Xvoid = XVoid ()
+
+structure Dev = BuildEthDev(structure B = Fox_Basis
+			    val protocol_numbers = [ip_over_eth,arp_over_eth]
+			    val high_priority_filter = true
+			    val do_prints = false)
+
+structure SunRPC_UDP = 
+    Build_SunRPC_UDP(structure B                  = Fox_Basis
+		     structure Device             = Dev.EthDev
+		     val local_port               = 2ux5742
+		     val ip_over_eth              = ip_over_eth
+		     val arp_over_eth             = arp_over_eth
+		     val do_prints                = true
+		     val use_arp                  = false)

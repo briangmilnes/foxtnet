@@ -1,0 +1,192 @@
+(*
+
+	FoxNet: The Fox Project's Communication Protocol Implementation Effort
+	Edoardo Biagioni (Edoardo.Biagioni@cs.cmu.edu)
+	Brian Milnes (Brian.Milnes@cs.cmu.edu)
+	Ken Cline (Kenneth.Cline@cs.cmu.edu)
+        Nick Haines (Nick.Haines@cs.cmu.edu)
+	Fox Project
+	School of Computer Science
+	Carnegie Mellon University
+	Pittsburgh, Pa 15139-3891
+
+		i.	Abstract
+
+	A timing environment for UDP.
+
+
+		ii.	Table of Contents
+
+	i.	Abstract
+	ii.	Table of Contents
+	iii.	RCS Log
+	1.	functor UdpTimAux
+
+		iii.	RCS Log
+	
+$Log: udp.tim,v $
+Revision 1.23  1995/03/10  03:48:00  esb
+adapted to new vendor.sig.
+
+Revision 1.22  1995/02/04  21:46:58  robby
+updated to 107
+
+Revision 1.21  1994/08/18  20:35:25  esb
+removed on_receipt.
+
+Revision 1.20  1994/08/16  00:45:52  esb
+stub implementation, does not pass tests.
+
+Revision 1.19  1994/07/01  02:33:39  danwang
+Moved control structures into Fox_Basis.
+
+Revision 1.18  1994/06/20  20:18:26  esb
+added translate_pattern.
+
+Revision 1.17  1994/06/17  14:08:46  danwang
+Fixed to reference Tabulate from the Fox_Basis.
+
+Revision 1.16  1994/06/16  21:51:29  danwang
+Updated to use functorized Fox_Basis.
+
+Revision 1.15  1994/05/04  01:43:01  esb
+fixed minor bugs in printing.
+
+Revision 1.14  94/04/06  23:19:57  esb
+adapted to new receive_packet interface.
+
+Revision 1.13  94/03/29  17:44:40  milnes
+Moved to using Receive_Packet size.
+
+Revision 1.12  1994/03/04  02:26:33  milnes
+Added mut.
+
+Revision 1.11  1994/02/25  18:35:12  milnes
+Updated timing and moved to safe array operations.
+
+Revision 1.10  1994/02/21  00:01:58  esb
+minor change.
+
+Revision 1.9  94/02/17  17:10:27  milnes
+Checked out, reinstalled old, rechecked in to repair the afs file move problems that confused rcs.
+
+Revision 1.7  1994/02/08  19:04:29  milnes
+Changes for new whole new timing style.
+
+Revision 1.6  1994/01/30  18:31:41  milnes
+adapted to new interfaces.
+
+Revision 1.5  1993/12/21  13:50:34  cline
+Added high_priority_filter to BuildUdp functor.
+
+Revision 1.4  1993/12/09  19:42:19  milnes
+Updated to handle scheduler, proto.sig, dev.sig and timeprotocol.sig changes.
+
+Revision 1.3  1993/11/11  05:20:38  esb
+functor parameter changes.
+
+Revision 1.1  1993/11/09  23:34:26  milnes
+Initial revision
+
+		1.	functor UdpTimAux
+*)
+
+functor Udp_Tim (structure Udp: UDP_PROTOCOL
+		 structure B: FOX_BASIS
+		   sharing type Udp.incoming = B.Dyn_Array.T
+		       and type Udp.outgoing = B.Dyn_Array.T
+		       and type Udp.port = FoxWord16.word
+		       and type Udp.lower_layer_address = FoxWord32.word
+		 val local_port:  FoxWord16.word
+		 val remote_port: FoxWord16.word
+		 val debug_level: int ref option): TIME_PROTOCOL  =
+ struct
+  structure Trace = Trace (structure V = B.V
+			   val debug_level = debug_level
+			   val module_name = "udp.tim")
+  val local_print = Trace.local_print
+  val debug_print = Trace.debug_print 
+
+  structure P = Udp
+  val header = "udp.tim: "
+  datatype check_result = Valid | Invalid | Ignore
+  type byte = FoxWord8.word
+  type ip_number = FoxWord32.word
+
+  fun make_data size =
+        B.Access.from_list (B.Tabulate.tabulate
+			    ((fn n => FoxWord8.intToWord (n mod 256)),
+			     size))
+
+  fun debug_print packet =
+       let val pdata = B.Dyn_Array.read packet
+	   val dlen = ByteArray.length pdata
+	   val header = "\nudp.tim: making outgoing \n"
+	   val format = [B.Format.String header,
+			 B.Format.String "\ndata = ",
+			 B.Format.Bytes (min (40, dlen)),
+			 B.Format.String "...\n"]
+	   val strings = (B.Format.bytearray (format, pdata, 0))
+	                 handle B.Format.Bad_Format =>
+			  ["udp.tim: ", "bad format in make_packet\n"]
+       in local_print (B.V.String.concat strings)
+       end
+
+  fun make_packet (connection, data)  =
+       let val size = ByteArray.length data
+           val (packet, send) = Udp.allocate_send (connection, size)
+       in B.Dyn_Array.update (packet, 0, data);
+	  Trace.do_if_debug (fn _ => debug_print packet);
+          send
+       end
+
+  datatype check_data = All | Some | None
+
+  fun check_data (check, data, found) =
+       case check of
+         None => Valid
+       | _ =>
+        let val (d, size) =
+                 case check of
+	            None => (ByteArray.array (0, 0), 0)
+	          | Some => (B.Dyn_Array.sub (found, 0, 2), 2)
+	          | All => (B.Dyn_Array.read found,
+			    B.Dyn_Array.size found)
+        in if B.Access.compare_ranges
+               ((data, B.Access.Range {first = 0, last = size}),
+	        (d, B.Access.Range {first = 0, last = size})) then Valid
+           else Invalid
+      end
+
+  fun check_other _ = Valid
+
+  val byte = B.Dyn_Array.sub1
+
+  fun start_test () = ()
+  val stop_test = start_test
+  exception Bad_Ip_Address of FoxWord32.word * string
+  fun translate_address ip =
+       P.Address (P.Key {peer = ip,
+			 local_port = local_port,
+			 remote_port = remote_port})
+
+  fun makestring_packet packet =
+       let val p = B.Dyn_Array.read packet
+           val format = [B.Format.String "Packet: ",
+		         B.Format.Bytes (min (100, ByteArray.length p)),
+		         B.Format.String "\n"]
+           val strings = (B.Format.bytearray (format, p, 0))
+                          handle B.Format.Bad_Format =>
+		                  ["udp.tim: ",
+				   "bad format in makestring_packet\n"]
+       in B.V.String.concat strings
+       end
+
+  fun on_connection _ = ()
+
+  val min_packet = 1
+
+  val size = FoxWord32.intToWord o B.Dyn_Array.size
+
+ end (* struct *)
+

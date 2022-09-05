@@ -1,0 +1,160 @@
+(*
+
+	FoxNet: The Fox Project's Communication Protocol Implementation Effort
+	Edoardo Biagioni <Edoardo.Biagioni@cs.cmu.edu>
+	Nick Haines  (Nick.Haines@cs.cmu.edu)
+	Brian Milnes (Brian.Milnes@cs.cmu.edu)
+	Fox Project
+	School of Computer Science
+	Carnegie Mellon University
+	Pittsburgh, Pa 15139-3891
+
+	i.	Abstract
+
+	Test code to test the Coroutine functor.
+
+	ii.	Table of Contents
+
+	i.	Abstract
+	ii.	Table of Contents
+	iii.	RCS Log
+	1.	functor Time_Coroutine
+	2.      structure Time_Coro
+
+	iii.	RCS Log
+	
+$Log: coro.tim,v $
+Revision 1.9  1997/06/04  11:51:55  esb
+adapted to new interfaces.
+
+Revision 1.8  1996/02/15  19:01:07  esb
+adapted to new vendor.
+
+Revision 1.7  1995/03/10  03:44:58  esb
+adapted to new vendor.sig.
+
+Revision 1.6  1995/02/09  19:46:59  esb
+made work under 1.07.
+
+Revision 1.5  1995/01/18  20:58:53  esb
+separated fork and fork_limited_time.
+
+Revision 1.4  1994/06/16  16:29:59  danwang
+Updated to use functorized Fox_Basis
+
+Revision 1.3  1994/04/28  13:19:34  esb
+took out the timing boards, since the implementation no longer calls them.
+
+Revision 1.2  94/04/26  17:48:06  esb
+added timing calls.
+
+Revision 1.1  94/02/08  15:08:55  esb
+Initial revision
+
+
+	1.	functor Time_Coroutine
+*)
+
+functor Time_Coroutine (structure V: VENDOR
+			structure Debug: DEBUG
+			val debug_level: int ref option) =
+ struct
+  fun local_print s = V.Print.print ("coro.tim: " ^ s ^ "\n")
+
+  local
+   structure Scheduler = Coroutine (structure Debug = Debug
+				    structure V = V
+				    val debug_level = debug_level)
+
+   fun print_time (name, start_time, loops) =
+        let val end_time = V.Time.now ()
+	    val start_s = V.Time.toSeconds start_time
+	    val start_u = V.Time.toMicroseconds start_time
+	    val end_s = V.Time.toSeconds end_time
+	    val end_u = V.Time.toMicroseconds end_time
+	    val delta = (end_s - start_s) * 1000000 + end_u - start_u
+	    val us_per_switch = delta div loops
+	in local_print (name ^ ", " ^
+			Integer.toString loops ^
+			" it. " ^
+			Integer.toString (delta div 1000) ^
+			" ms, rate " ^
+			Integer.toString us_per_switch ^
+			" us/switch")
+	end
+
+   fun run_test (name, loops) =
+	let val start_time = V.Time.now ()
+	    fun run n () =
+		 if n < 1 then print_time (name, start_time, loops)
+		 else (Scheduler.fork (run (n - 1));
+		       Scheduler.exit ())
+	in Scheduler.fork (run loops);
+	   Scheduler.sleep (loops + 2000)
+	end
+
+   fun run_callcc (name, loops) =
+	let val start_time = V.Time.now ()
+	    fun run n () =
+		 if n < 1 then print_time (name, start_time, loops)
+		 else (V.Control.callcc (fn cc => V.Control.throw cc ());
+		       run (n - 1) ())
+	in run loops ()
+	end
+
+   fun run_switch (name, loops) =
+	let val start_time = V.Time.now ()
+	    fun run n () =
+		 if n < 1 then print_time (name, start_time, loops)
+		 else (Scheduler.suspend (fn s => Scheduler.resume (s, ()));
+		       run (n - 1) ())
+	in run loops ()
+	end
+  in
+
+   fun run_times n =
+	(Scheduler.reset ();
+	 local_print "garbage collection...";
+	 SMLofNJ.Internals.GC.doGC 0;
+	 local_print "done";
+	 Scheduler.fork (fn _ => Scheduler.sleep 100000);
+	 run_test ("thread create and switch", n);
+	 run_switch ("suspend and resume", n);
+	 run_callcc ("callcc and throw", n * 10);
+	 Scheduler.reset ())
+
+   fun run () = run_times 10000
+
+   fun run_forever () =
+	let val total = ref (Word64.fromInt 0)
+	    fun run count () =
+		 (if count >= 1000 then
+		   (total := Word64.+ (! total, Word64.fromInt count);
+		    Scheduler.fork (run 0))
+		  else Scheduler.fork (run (count + 1));
+		  Scheduler.exit ())
+	    fun gc () =
+		 (Scheduler.sleep 10000;
+		  SMLofNJ.Internals.GC.doGC 0;
+		  local_print (Word64.toString (! total) ^ " calls");
+		  gc ())
+	in Scheduler.fork (run 0);
+	   gc ();
+	   ()
+	end
+
+  end (* local *)
+
+ end (* struct *)
+
+(*
+	2. structure Time_Coro
+*)
+
+structure Time_Coro = Time_Coroutine (structure Debug = Fox_Basis.Debug
+				      structure V = Fox_Basis.V
+				      val debug_level = NONE)
+
+
+
+

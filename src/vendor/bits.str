@@ -1,0 +1,51 @@
+(*
+
+	FoxNet: The Fox Project's Communication Protocol Implementation Effort
+	Edoardo Biagioni (Edoardo.Biagioni@cs.cmu.edu)
+	Ken Cline (Kenneth.Cline@cs.cmu.edu)
+	Fox Project
+	School of Computer Science
+	Carnegie Mellon University
+	Pittsburgh, Pa 15213-3891
+
+		i.	Abstract
+
+        Bitwise boolean operations on integers
+
+
+		ii.	Table of Contents
+
+	i.	Abstract
+	ii.	Table of Contents
+	iii.	RCS Log
+	1.	structure Bits
+
+		iii.	RCS Log
+	
+$Log: bits.str,v $
+Revision 1.1  1996/01/15  18:26:47  cline
+Initial revision
+
+
+		1.	structure Bits
+
+*)
+
+structure Bits =
+ struct
+
+  local
+    fun wrap_unary f i = Word.toInt (f (Word.fromInt i))
+    fun wrap_binary f (i,j) = Word.toInt (f (Word.fromInt i, Word.fromInt j))
+    fun wrap_shift f (i,j) = Word.toInt (f (Word.fromInt i, j))
+  in
+    val andb = wrap_binary Word.andb
+    val orb  = wrap_binary Word.orb
+    val xorb = wrap_binary Word.xorb
+    val notb = wrap_unary  Word.notb
+    val op >> = wrap_shift Word.>>
+    val op << = wrap_shift Word.<<
+    val op ~>> = wrap_shift Word.~>>
+  end
+ end
+

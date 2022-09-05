@@ -1,0 +1,136 @@
+(*
+
+	FoxNet: The Fox Project's Communication Protocol Implementation Effort
+	Edoardo Biagioni (Edoardo.Biagioni@cs.cmu.edu)
+	Brian Milnes (Brian.Milnes@cs.cmu.edu)
+	Ken Cline (Kenneth.Cline@cs.cmu.edu)
+        Nick Haines (Nick.Haines@cs.cmu.edu)
+	Fox Project
+	School of Computer Science
+	Carnegie Mellon University
+	Pittsburgh, Pa 15139-3891
+
+		i.	Abstract
+
+	Build Inetd with all the goodies
+
+		ii.	Table of Contents
+
+	i.	Abstract
+	ii.	Table of Contents
+	1.	structure Full_Inetd
+
+
+		1.	structure Full_Inetd
+*)
+
+structure Full_Inetd =
+ struct
+  local
+   structure Http_Inetd = Http_Inetd(val hostname = SOME "foxnet.cs.cmu.edu"
+				     val log_file = "/usr/fox/http_log"
+				     val checkpoint_file =
+					     "/usr/fox/http_checkpoint"
+				     val port = 80)
+   val http_service = Http_Inetd.http_service
+
+   local
+    val transport_setup = Inetd_Stack.setup
+    fun make_dns_setup {domain_list, servers, transport} =
+         {domain_list = domain_list, servers = servers,
+	  transport = transport_setup}
+    val dns_setup = make_dns_setup (Inetd_Stack.Init.Dns.setup ())
+    val lookup = Inetd_Stack.Dns_Lookup.lookup dns_setup
+    val pukool = Inetd_Stack.Dns_Lookup.inverse_lookup dns_setup
+      
+   in
+    structure Hello = Build_Hello (val logfile = "/usr/fox/hello_log"
+				   structure Tcp = Inetd_Stack.Tcp
+				   val setup = transport_setup
+				   val lookup = lookup
+				   val pukool = pukool)
+   end
+   val hello_service = (Hello.hello_port, Hello.hello_handler)
+
+   structure Telnet_Stuff =
+    struct
+     structure Tcp = Inetd_Stack.Tcp
+     structure Term = Term
+     structure Pty = Telnet_Pty (structure B = Fox_Basis
+				 val debug_level = NONE)
+     fun send_urgent (Tcp.C {extension, ...}, lower_outgoing) =
+	  let val Tcp.Tcp_Connection_Extension {urgent_send, ...} = extension
+	  in urgent_send lower_outgoing
+	  end
+
+     fun parse_urgent (_, Tcp.Tcp_Status.Urgent_Data data) = SOME data
+       | parse_urgent _ = NONE
+
+     fun lower_flush _ = ()
+
+     structure Data = Telnet_Data (structure B = Fox_Basis
+				   val debug_level = NONE)
+     structure IO =Telnet_Io (structure Data = Data
+			      structure In = Tcp.Incoming
+			      structure Out = Tcp.Outgoing
+			      val suppress_lf_after_cr = true
+			      structure B = Fox_Basis
+			      val debug_level = NONE)
+
+     structure Telnet_Protocol =
+	  Telnet_Protocol (structure IO = IO
+			   structure Lower = Tcp
+			   val send_urgent = send_urgent
+			   val parse_urgent = parse_urgent
+			   val lower_flush = lower_flush
+			   structure B = Fox_Basis
+			   val debug_level = NONE)
+     structure Telnet = Telnet (structure Lower = Telnet_Protocol
+				structure B = Fox_Basis
+				val debug_level = NONE)
+     val setup = Tcp.Transport_Setup.Setup (Inetd_Stack.Init.Ip.setup ())
+     val lower_pattern = Tcp.Transport_Pattern.Local_Specified
+			    {local_port = Word16.fromInt 23}
+
+     fun connection_closing Tcp.Tcp_Status.Connection_Closing = true
+       | connection_closing Tcp.Tcp_Status.Connection_Reset = true
+       | connection_closing _ = false
+    end
+
+   structure Telnet_Server =
+        Telnet_Server (structure Term = Telnet_Stuff.Term
+		       structure Pty = Telnet_Stuff.Pty
+		       structure Telnet = Telnet_Stuff.Telnet
+		       val login_path = "/usr/local/bin/login"
+		       val background_mode = true (* never stop *)
+		       val setup = Telnet_Stuff.setup
+		       val lower_pattern = Telnet_Stuff.lower_pattern
+		       val connection_closing = Telnet_Stuff.connection_closing
+		       structure B = Fox_Basis
+		       val debug_level = NONE)
+   val telnet_service = Telnet_Server.inetd_pair
+
+   val tcp_services = [http_service, hello_service, telnet_service]
+
+   structure Inetd = Build_Inetd (val tcp_services = tcp_services
+				  val udp_services = [])
+  in
+   open Inetd
+  end (* local *)
+ end (* struct *)
+
+local
+ val transport_setup = Inetd_Stack.setup
+ fun make_dns_setup {domain_list, servers, transport} =
+      {domain_list = domain_list, servers = servers,
+       transport = transport_setup}
+ val dns_setup = make_dns_setup (Inetd_Stack.Init.Dns.setup ())
+ val lookup = Inetd_Stack.Dns_Lookup.lookup dns_setup
+ val pukool = Inetd_Stack.Dns_Lookup.inverse_lookup dns_setup
+in
+ structure Hello = Build_Hello (val logfile = "/dev/tty"
+				structure Tcp = Inetd_Stack.Tcp
+				val setup = transport_setup
+				val lookup = lookup
+				val pukool = pukool)
+end

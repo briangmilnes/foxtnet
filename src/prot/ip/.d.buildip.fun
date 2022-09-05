@@ -1,0 +1,2 @@
+Decl 2
+(b f%Build_Ip (l (h (d (f s%FoxWord16) (a s%Lower (i f%Build_Eth (h (d (a s%Device (g s%Device) 0) (a s%B (g s%B) 0))) F) 0) (a s%Device (g s%Lower.Device) 0) (a s%Eth (g s%Lower.Eth) 0) (a s%Arp (i f%Arp_Eth (h (d (a s%Eth (g s%Eth) 0) (a s%B (g s%B) 0))) F) 0) (a s%Ip_Mux (i f%Ip_Loop (h (d (a s%Arp (g s%Arp) 0) (a s%B (g s%B) 0))) F) 0) (a s%Ip (i f%Ip (h (d (a s%Lower (g s%Ip_Mux) 0) (a s%B (g s%B) 0))) F) 0))) (g s$BUILDIP) 0 (h (d (a s%Device (g s$DEVICE_PROTOCOL) 0) (a s%B (g s$FOX_BASIS) 0) (f s%Device s%B s%FoxWord16)))))

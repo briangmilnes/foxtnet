@@ -1,0 +1,122 @@
+(*
+
+	FoxNet: The Fox Project's Communication Protocol Implementation Effort
+	Edoardo Biagioni <Edoardo.Biagioni@cs.cmu.edu>
+	Nick Haines  (Nick.Haines@cs.cmu.edu)
+	Brian Milnes (Brian.Milnes@cs.cmu.edu)
+	Fox Project
+	School of Computer Science
+	Carnegie Mellon University
+	Pittsburgh, Pa 15139-3891
+
+	i.	Abstract
+
+	Test code to test the speed of pipes.
+
+	ii.	Table of Contents
+
+	i.	Abstract
+	ii.	Table of Contents
+	iii.	RCS Log
+	1.	functor Time_Coroutine
+	2.      structure Time_Coro
+
+	iii.	RCS Log
+	
+$Log: pipe.tim,v $
+# Revision 1.1  1995/06/20  16:46:14  esb
+# Initial revision
+#
+
+	1.	functor Time_Pipe
+*)
+
+functor Time_Pipe (structure Store: STORE
+		   structure V: VENDOR
+		   structure Debug: DEBUG
+		   val debug_level: int ref option) =
+ struct
+  local
+   fun local_print s = V.Print.print ("pipe.tim: " ^ s ^ "\n");
+
+   structure Scheduler = Coroutine (structure Debug = Debug
+				    structure V = V)
+   structure Event = Event_Queue (structure Scheduler = Scheduler
+				  structure Store = Store
+				  structure Debug = Debug
+				  structure V = V
+				  val debug_level = NONE)
+   structure Queue = Deq (structure V = V)
+   structure Pipe = Data_Pipe (structure Event_Queue = Event
+			       structure Queue = Queue
+			       structure V = V
+			       structure Debug = Debug)
+
+   fun run_test (name, loops) =
+	let val start_time = V.Time.gettimeofday ()
+	    val complete_pipe = Pipe.new ()
+	    val printed = ref false
+	    fun print_time () =
+		 let val end_time = V.Time.gettimeofday ()
+		     val delta = V.Time.deltams (end_time, start_time)
+		     val us_per_iter = delta * 1000 div loops
+		 in if ! printed then ()
+		    else
+		     (printed := true;
+		      Pipe.enqueue (complete_pipe, ());
+		      local_print (name ^ ", " ^
+				   V.Integer.makestring loops ^
+				   " double iterations, total " ^
+				   V.Integer.makestring delta ^
+				   " ms, rate " ^
+				   V.Integer.makestring us_per_iter ^
+				   " us/iteration"))
+		 end
+	    fun run (my_pipe, other_pipe, n) () =
+	         let fun run_loop 0 = print_time ()
+		       | run_loop n =
+			  (Pipe.enqueue (my_pipe, ());
+			   Pipe.dequeue other_pipe;
+			   run_loop (n - 1))
+		 in run_loop n
+		 end
+	    val pipe1 = Pipe.new ()
+	    val pipe2 = Pipe.new ()
+	    fun timeout () =
+	         (Scheduler.sleep (loops + 200);
+		  Pipe.enqueue (complete_pipe, ()))
+	in Scheduler.fork (run (pipe1, pipe2, loops));
+	   Scheduler.fork (run (pipe2, pipe1, loops));
+	   Scheduler.fork timeout;
+	   Pipe.dequeue complete_pipe
+	end
+
+  in (* local *)
+
+   fun run_times n =
+	(Scheduler.reset ();
+	 local_print "garbage collection...\n";
+	 System.Runtime.gc 1;
+	 System.Runtime.gc 0;
+	 local_print "g.c. done\n";
+	 run_test ("two threads", n);
+	 Scheduler.reset ())
+
+   fun run () = run_times 10000
+
+  end (* local *)
+
+ end (* struct *)
+
+(*
+	2. structure Time_Pipe
+*)
+
+structure Time_Pipe = Time_Pipe (structure Store = Fox_Basis.Store
+				 structure Debug = Fox_Basis.Debug
+				 structure V = Fox_Basis.V
+				 val debug_level = NONE)
+
+
+
+

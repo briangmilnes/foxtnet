@@ -1,0 +1,377 @@
+/*
+$Log: timingboard.tim,v $
+Revision 1.2  1994/03/02  18:35:49  esb
+added RCS log.
+
+*/
+fun loopn 0 = () | loopn n = loopn (n - 1); fun loop n = (fn () => (loopn n));
+
+fun v () = ! TimingBoard.reference;
+/*
+- d v;
+Entry point:
+
+105     bne     $21, 0, .111            ; GC check
+106     addi    base, link, #32344      ; Set up base register
+107     lw      $21, 4($29)             ; call GC
+108     add     $31, link, 0            
+109     jr      $21                     
+110     addi    $25, 0, #127            
+111     lw      $14, 4(clos)            ; Get TimingBoard from the closure.
+112     sll     0, 0, 0                 ; NOOP
+113     lw      $15, 4($14)             ; Get TimingBoard.reference.
+114     sll     0, 0, 0                 ; NOOP 
+115     lw      arg, 0($15)             ; ! TimingBoard.reference - assumes boxed byte4.
+116     jr      cont                    ; Return.
+117     slt     $21, alloc, limit       ; Prepare for GC check
+*/
+
+fun w () = ! TimingBoard.reference - !TimingBoard.reference;
+/*
+Entry point:
+
+105     bne     $21, 0, .111            ; GC check
+106     addi    base, link, #32344      ; Set up base register
+107     lw      $21, 4($29)             ; call GC
+108     add     $31, link, 0            
+109     jr      $21                     
+110     addi    $25, 0, #127            
+111     lw      $14, 4(clos)            ; Get TimingBoard from the closure.
+112     addi    $1, 0, #298             ; Put Byte4 tag into $1.
+113     lw      $15, 4($14)             ; Put Timingboard.reference into register 15.
+114     lw      $17, 4($14)             ; Put Timingboard.reference into register 17.
+115     lw      $16, 0($15)             ; ! Timingboard.reference #1 
+116     lw      link, 0($17)            ; ! Timingboard.reference #2 
+117     lw      arg, 0($16)             ; Read Value from Boxed Byte4 ! Timingboard.reference #1  
+118     lw      $18, 0(link)            ; Read Value from Boxed Byte4 ! Timingboard.reference #2  
+119     sw      $1, 0(alloc)            ; Put Byte4 tag (298) into alloc pointer.
+120     sub     $18, arg, $18           ; Difference Values.
+121     addi    arg, alloc, #4          ; Return a pointer to the value.
+122     sw      $18, 4(alloc)           ; Store difference into memory.
+123     addi    alloc, alloc, #8        ; Add 8 bytes to the current allocation.
+124     jr      cont                    ; Return.
+125     slt     $21, alloc, limit       ; Prepare for GC check
+*/
+
+fun x () = let val x = ! TimingBoard.reference in ! TimingBoard.reference - x end;
+
+/*
+105     bne     $21, 0, .111            ; GC check
+106     addi    base, link, #32344      ; Set up base register
+107     lw      $21, 4($29)             ; call GC
+108     add     $31, link, 0            
+109     jr      $21                     
+110     addi    $25, 0, #127            
+111     lw      $14, 4(clos)            ; Get TimingBoard from closure.
+112     addi    $25, 0, #298            ; Put Byte4 tag in register 25.
+113     lw      $15, 4($14)             ; Put TimingBoard.reference into 15.
+114     lw      $17, 4($14)             ; Put TimingBoard.reference into 17.
+115     lw      $16, 0($15)             ; ! TimingBoard.reference #1 into $16.
+116     lw      link, 0($17)            ; ! TimingBoard.reference #2 into $17.
+117     lw      $18, 0($16)             ; Read Value from ! TimingBoard.reference #1 into 18.
+118     lw      arg, 0(link)            ; Read Value from ! TimingBoard.reference #2 into arg.
+119     sw      $25, 0(alloc)           ; Put tag into memory.
+120     sub     $18, arg, $18           ; Difference Values.
+121     addi    arg, alloc, #4          ; Put new Byte4's address into arg.
+122     sw      $18, 4(alloc)           ; Store the difference in memory.
+123     addi    alloc, alloc, #8        ; Increment the allocation pointer.
+124     jr      cont                    ; Return.
+125     slt     $21, alloc, limit       ; Prepare for GC check
+
+*/
+
+fun y loop = let val x = ! TimingBoard.reference 
+             in
+              loop(); ! TimingBoard.reference - x 
+             end
+
+/*
+ Not boxing but it is not dereferencing to value all the way, because it
+ does not need to. That is immutable data it has its hands on.
+
+Entry point:
+
+105     bne     $21, 0, .111            ; GC check
+106     addi    base, link, #32344      ; Set up base register
+107     lw      $21, 4($29)             ; call GC
+108     add     $31, link, 0            
+109     jr      $21                     
+110     addi    $25, 0, #127            
+111     lw      $14, 4(clos)            ; Get X.
+112     sw      $6, 16(alloc)           ; Store $g into alloc + 4.
+113     lw      $15, 4($14)             ; Read clos(1) into 15.
+114     addi    $21, 0, #290            ; Put tag #290 into $21. 
+115     lw      $16, 0($15)             ; Read contents of X+4
+116     sw      cont, 12(alloc)         ; Store the cont at +3w.
+117     sw      $21, 0(alloc)           ; Put #290 at +0w.
+118     sw      $14, 8(alloc)           ; Put $14 at +2w;
+119     sw      $16, 4(alloc)           ; Put $16 at +1w;
+120     addi    $6, alloc, #4           ; 
+121     addi    alloc, alloc, #20       ; Increment allocation five words.
+122     lw      link, 0(arg)            ; Get the function pointer from the closure.
+123     add     clos, arg, 0            ; Set closure to arg.
+124     addi    arg, 0, #1              ; Pass in (). 
+125     addi    cont, base, #~32248     ; .129  Set the gc return point to down below.
+126     jr      link                    ; Jump to loop.
+127     slt     $21, alloc, limit       ; Prepare for GC check
+
+129     bne     $21, 0, .135            ; GC check
+130     addi    base, cont, #32248      ; Set up base register
+131     lw      $21, 4($29)             ; call GC
+132     add     $31, cont, 0            
+133     jr      $21                     
+134     addi    $25, 0, #124           ;
+135     lw      link, 4($6)            ; 
+136     lw      $10, 0($6)             ; First word in continuation is &R.
+137     lw      clos, 4(link)          ; 
+138     lw      $18, 0($10)            ; Dereference R.
+139     lw      $9, 0(clos)            ; Dereference &&A.
+140     addi    $31, 0, #298           ; Make a byte4 tag.           
+141     lw      arg, 0($9)             ; Dereference &A.
+142     sw      $31, 0(alloc)          ; Put the byte4 tag in memory.
+143     sub     $18, arg, $18          ; Subtract the timing values.
+144     addi    arg, alloc, #4         ; Put the return value pointer into memory.
+145     sw      $18, 4(alloc)          ; Put the result in memory.
+146     addi    alloc, alloc, #8       ; Increment the allocation pointer.
+147     lw      $9, 12($6)             ; Restore old $6 into $9.
+148     lw      cont, 8($6)            ; Get return address.
+149     add     $6, $9, 0              ; Swap 6 and 9.
+150     jr      cont                   ; Return.
+151     slt     $21, alloc, limit      ; Prepare for GC check
+
+*/
+
+fun t () = Byte4.Unsafe_U.sub(TimingBoard.array,0);
+ 
+/*
+Entry point:
+
+105     bne     $21, 0, .111            ; GC check
+106     addi    base, link, #32344      ; Set up base register
+107     lw      $21, 4($29)             ; call GC
+108     add     $31, link, 0            
+109     jr      $21                     
+110     addi    $25, 0, #127            
+111     lw      $14, 4(clos)            ; Get TimingBoard from Closure
+112     addi    $31, 0, #298            ; Make tag for byte4.
+113     lw      $15, 0($14)             ; Put TimingBoard.array into $15.
+114     addi    arg, alloc, #4          ; Make a pointer to the returned byte4.
+115     lw      $18, 0($15)             ; Read the value from the bytearray.
+116     sw      $31, 0(alloc)           ; Put the tag in memory.
+117     sw      $18, 4(alloc)           ; Put the value in memory.
+118     addi    alloc, alloc, #8        ; Increment the allocation pointer.
+119     jr      cont                    ; Return.
+120     slt     $21, alloc, limit       ; Prepare for GC check
+*/
+
+fun s () = Byte4.Unsafe_U.sub(TimingBoard.array,0) - Byte4.Unsafe_U.sub(TimingBoard.array,0);
+
+/* Boxing both values!
+
+Entry point:
+
+105     bne     $21, 0, .111            ; GC check
+106     addi    base, link, #32344      ; Set up base register
+107     lw      $21, 4($29)             ; call GC
+108     add     $31, link, 0            
+109     jr      $21                     
+110     addi    $25, 0, #127            
+111     lw      $14, 4(clos)            ; Get TimingBoard.
+112     addi    $21, 0, #298            ; Put the Byte4 tag in $21.
+113     lw      $15, 0($14)             ; Get .array.
+114     addi    $16, alloc, #4          ; Get a pointer to the new value.
+115     lw      $18, 0($15)             ; Read the timing board.
+116     sw      $21, 0(alloc)           ; Put the tag in memory.
+117     sw      $18, 4(alloc)           ; Put the value in memory.
+118     addi    alloc, alloc, #8        ; Increment the allocation pointer.
+119     lw      $17, 0($14)             ; Get TimingBoard.array.
+120     addi    $1, 0, #298             ; Put a tag in $1.
+121     lw      $18, 0($17)             ; Read timingboard.
+122     addi    link, alloc, #4         ; Keep a pointer to the boxed byte4.
+123     sw      $18, 4(alloc)           ; Put the value into memory.
+124     sw      $1, 0(alloc)            ; Put the tag in memory.
+125     addi    alloc, alloc, #8        ; Bump the Allocation 2 boxed byte4s.
+126     lw      arg, 0($16)             ; Get the value from the first byte4.
+127     lw      $18, 0(link)            ; Get the value from the second byte4.
+128     addi    $21, 0, #298            ; Put a tag in #21.
+129     sub     $18, arg, $18           ; Subtract the two time values.
+130     sw      $21, 0(alloc)           ; Put the tag at the allocation pointer.
+131     addi    arg, alloc, #4          ; Make the pointer to the byte4.
+132     sw      $18, 4(alloc)           ; Put the result in memory.
+133     addi    alloc, alloc, #8        ; Increment the allocation pointer.
+134     jr      cont                    
+135     slt     $21, alloc, limit       ; Prepare for GC check
+
+*/
+
+fun p loop = let val x = Byte4.Unsafe_U.sub(TimingBoard.array,0) 
+ in loop (); Byte4.Unsafe_U.sub(TimingBoard.array,0) - x end 
+
+/*
+ Working right, boxing first at least.
+Entry point:
+
+105     bne     $21, 0, .111            ; GC check
+106     addi    base, link, #32344      ; Set up base register
+107     lw      $21, 4($29)             ; call GC
+108     add     $31, link, 0            
+109     jr      $21                     
+110     addi    $25, 0, #127            
+111     lw      $14, 4(clos)            
+112     addi    $25, 0, #298            
+113     lw      $15, 0($14)             
+114     addi    $16, alloc, #4          
+115     lw      $18, 0($15)             
+116     sw      $25, 0(alloc)           
+117     sw      $18, 4(alloc)           
+118     addi    alloc, alloc, #8        
+119     sw      $6, 16(alloc)           
+120     addi    $31, 0, #290            
+121     sw      cont, 12(alloc)         
+122     addi    $6, alloc, #4           
+123     sw      $31, 0(alloc)           
+124     sw      $16, 4(alloc)           
+125     sw      $14, 8(alloc)           
+126     addi    alloc, alloc, #20       
+127     lw      link, 0(arg)            
+128     add     clos, arg, 0            
+129     addi    arg, 0, #1              
+130     addi    cont, base, #~32228     ; .134
+131     jr      link                    
+132     slt     $21, alloc, limit       ; Prepare for GC check
+
+134     bne     $21, 0, .140            ; GC check
+135     addi    base, cont, #32228      ; Set up base register
+136     lw      $21, 4($29)             ; call GC
+137     add     $31, cont, 0            
+138     jr      $21                     
+139     addi    $25, 0, #124            
+140     lw      link, 4($6)             
+141     addi    $21, 0, #298            
+142     lw      clos, 0(link)           
+143     addi    $9, alloc, #4           
+144     lw      $18, 0(clos)            
+145     sw      $21, 0(alloc)           
+146     sw      $18, 4(alloc)           
+147     addi    alloc, alloc, #8        
+148     lw      $10, 0($6)              
+149     lw      arg, 0($9)              
+150     lw      $18, 0($10)             
+151     addi    $1, 0, #298             
+152     sub     $18, arg, $18           
+153     addi    arg, alloc, #4          
+154     sw      $1, 0(alloc)            
+155     sw      $18, 4(alloc)           
+156     addi    alloc, alloc, #8        
+157     lw      $9, 12($6)              
+158     lw      cont, 8($6)             
+159     add     $6, $9, 0               
+160     jr      cont                    
+161     slt     $21, alloc, limit       ; Prepare for GC check
+*/
+
+fun q loop = let val x = ! TimingBoard.reference
+ in loop (); Byte4.Unsafe_U.sub(TimingBoard.array,0) - x end 
+
+/*
+ This is the wrong code.
+ This is actually storing ! TimingBoard.reference into the closure for the post
+ unknown-function call, and then dereferencing it afterward. Which is exactly
+ right type-theoretically, as a boxed byte4 is immutable.
+
+Entry point:
+
+105     bne     $21, 0, .111            ; GC check
+106     addi    base, link, #32344      ; Set up base register
+107     lw      $21, 4($29)             ; call GC
+108     add     $31, link, 0            
+109     jr      $21                     
+110     addi    $25, 0, #127            
+111     lw      $14, 4(clos)            ; Get TimingBoard from closure.
+112     sw      $6, 16(alloc)           ; Save $6.
+113     lw      $15, 4($14)             ; Get .reference from TimingBoard.
+114     addi    $25, 0, #290            ; Make closure tag.
+115     lw      $16, 0($15)             ; ! TimingBoard.reference.
+116     sw      cont, 12(alloc)         ; Put the continuation into the save record.
+117     sw      $16, 4(alloc)           ; Put the current time as a byte4 into the record.
+118     sw      $14, 8(alloc)           ; 
+119     sw      $25, 0(alloc)           ; Put closure tag into memory.
+120     addi    $6, alloc, #4           ; Make pointer to continuation.
+121     addi    alloc, alloc, #20       ; The continuation is of size 20 bytes.
+122     lw      link, 0(arg)            ; Put #loop into link.
+123     add     clos, arg, 0            ; Move arg into closure.
+124     addi    arg, 0, #1              ; Set arg to ().
+125     addi    cont, base, #~32248     ; .129
+126     jr      link                    ; Jump to loop.
+127     slt     $21, alloc, limit       ; Prepare for GC check
+
+129     bne     $21, 0, .135            ; GC check
+130     addi    base, cont, #32248      ; Set up base register
+131     lw      $21, 4($29)             ; call GC
+132     add     $31, cont, 0            
+133     jr      $21                     
+134     addi    $25, 0, #124             
+135     lw      link, 4($6)             ; $6 is return from unknown fun, &&A in 4($6).
+136     addi    $21, 0, #298            ; Byte4 Tag goes to 21.
+137     lw      clos, 0(link)           ; Get &&A.
+138     addi    $9, alloc, #4           ; 9:= Alloc + 1 word.
+139     lw      $18, 0(clos)            ; Dereference &A.
+140     sw      $21, 0(alloc)           ; Put byte4 tag into heap.
+141     sw      $18, 4(alloc)           ; Get byte4 from closure, put into A heap. $9 is now &A.
+142     addi    alloc, alloc, #8        ; Add 8 (2 words to the alloc pointer).
+143     lw      $10, 0($6)              ; Dereference &&R.
+144     lw      arg, 0($9)              ; Dereference &A.
+145     lw      $18, 0($10)             ; Dereference &R.
+146     addi    $31, 0, #298            ; Put Byte4 tag into 31.
+147     sub     $18, arg, $18           ; A - R.
+148     addi    arg, alloc, #4          ; Setup return pointer to boxed byte4.
+149     sw      $31, 0(alloc)           ; Put Byte4 tag in memory.
+150     sw      $18, 4(alloc)           ; Put difference in memory. 
+151     addi    alloc, alloc, #8        ; Increment allocation pointer, allocated two byte4s. 
+152     lw      $9, 12($6)              ; Callee restore.
+153     lw      cont, 8($6)             ; Get return point from $6, unknown return closure.
+154     add     $6, $9, 0               ; Move 9 to 6; register swap, callee restore of $6.
+155     jr      cont                    ; Return. 
+156     slt     $21, alloc, limit       ; Prepare for GC check
+val it = () : unit
+*/
+
+val b = ByteArray.array(4,0);
+fun a () = Byte4.Unsafe_U.update(b,0,Byte4.Unsafe_U.sub(TimingBoard.array,0));
+
+/*
+
+126     bne     $21, 0, .132            ; GC check
+127     addi    base, link, #32260      ; Set up base register
+128     lw      $21, 4($29)             ; call GC
+129     add     $31, link, 0            
+130     jr      $21                     
+131     addi    $25, 0, #127            
+132     lw      $16, 4(clos)            ; Get TimingBoard from Closure.
+133     addi    $1, 0, #298             ; Put a Byte4 tag into register 1.
+134     lw      $17, 0($16)             ; Get TimingBoard.reference.
+135     addi    link, alloc, #4         ; Get pointer to new Byte4.
+136     lw      $18, 0($17)             ; Read timing board.
+137     sw      $1, 0(alloc)            ; Put Tag into Heap.
+138     sw      $18, 4(alloc)           ; Put Value into Heap.
+139     addi    alloc, alloc, #8        ; Bump allocation one byte4.
+140     lw      clos, 8(clos)           ; Get b.
+141     lw      $18, 0(link)            ; Get byte4 value again (even though it is in 18 still)
+142     addi    arg, 0, #1              ; Set return to until.
+143     sw      $18, 0(clos)            ; Store byte4 value into B.
+144     jr      cont                    
+145     slt     $21, alloc, limit       ; Prepare for GC check
+val it = () : unit
+
+*/
+
+/*
+	A more compelling example, storing both a temporary and a sum into a bytearray.
+ 
+*/
+
+val b = ByteArray.array(8,0);
+fun a i loop = 
+  (Byte4.Unsafe_U.update(b,0,Byte4.Unsafe_U.sub(TimingBoard.array,0));
+   Byte4.Unsafe_U.update(b,4,Byte4.Unsafe_U.sub(b,4) + 
+                           Byte4.Unsafe_U.sub(TimingBoard.array,0) - Byte4.Unsafe_U.sub(b,0)))

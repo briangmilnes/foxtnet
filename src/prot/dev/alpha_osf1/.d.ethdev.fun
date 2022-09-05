@@ -1,0 +1,2 @@
+Decl 2
+(b f%Ethernet_Device (l (h (d (a s%Trace (i f%Trace (h (a s%V (g s%B.V) 0)) F) 0) (f s%Trace s%System s%ByteArray s%FoxWord32 s%FoxWord8 s%FoxMakestring s%B s%B) (b f%Buffers (l (h (f s%B)) 0 0 (h (d )))) (c (d (a s%Buffers (i f%Buffers (h (f )) F) 0) (f s%FoxWord8 s%ByteArray s%FoxWord16 s%B)) (d (f s%B s%Buffers s%Packet_Filter))) (f s%ByteArray s%Packet_Filter s%B s%B s%System))) (g s$DEVICE_PROTOCOL) 0 (h (d (a s%Packet_Filter (g s$PACKET_FILTER) 0) (a s%B (g s$FOX_BASIS) 0) (f s%ByteArray s%Packet_Filter)))))

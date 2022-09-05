@@ -1,0 +1,55 @@
+(*
+
+        FoxNet: The Fox Project's Communication Protocol Implementation Effort
+        Edo Biagioni (esb@cs.cmu.edu)
+	Ken Cline (Ken.Cline@cs.cmu.edu)
+        Fox Project
+        School of Computer Science
+        Carnegie Mellon University
+        Pittsburgh, Pa 15139-3891
+
+	i.	Abstract
+
+	interrupt.str: Recover from keyboard interrupt (^C)
+
+	ii.	Table of Contents
+
+	i.	Abstract
+	ii.	Table of Contents
+	iv.	Overview
+	1.	structure Keyboard_Interrupts
+
+
+
+	iv.	Overview
+
+This structure provides a simple mechanism for foxnet applications to
+trap keyboard interrupts and recover by resetting the scheduler.
+
+	1.	structure Keyboard_Interrupts
+*)
+
+structure Keyboard_Interrupts =
+  struct
+    fun protect f arg =
+      let
+	val old_handler = ref Signals.DEFAULT
+	fun reinstate () = Signals.setHandler (Signals.sigINT, !old_handler)
+	fun handler (signal, n, cont) =
+	  (app Fox_Basis.V.Print.print
+["\n\nKeyboard interrupt! Resetting scheduler, aborting.\n",
+ "\n",
+ "!!! The FoxNet is now in an inconsistent state. !!!\n",
+ "\n",
+ "To recover, rebuild the protocol stack (e.g. by reloading your application).\n\n"];
+	   Fox_Basis.Scheduler.reset ();
+	   reinstate ();
+	   case !old_handler of
+	     Signals.HANDLER h => h (signal, n, cont)
+	   | _ => cont)
+	val new_handler = Signals.HANDLER handler
+      in
+	old_handler := Signals.setHandler (Signals.sigINT, new_handler);
+	f arg before reinstate () handle x => (reinstate (); raise x)
+      end
+  end

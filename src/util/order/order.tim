@@ -1,0 +1,103 @@
+(*
+
+	FoxNet: The Fox Project's Communication Protocol Implementation Effort
+	Edoardo Biagioni <Edoardo.Biagioni@cs.cmu.edu>
+	Nick Haines  (Nick.Haines@cs.cmu.edu)
+	Brian Milnes (Brian.Milnes@cs.cmu.edu)
+	Fox Project
+	School of Computer Science
+	Carnegie Mellon University
+	Pittsburgh, Pa 15139-3891
+
+		i.	Abstract
+
+	Test code to test the Copy utility.
+
+		ii.	Table of Contents
+
+	i.	Abstract
+	ii.	Table of Contents
+	iii.	RCS Log
+	1.	functor Time_Order
+	2.	structure Time_Order
+	2.      structure Time_Copy
+
+		iii.	RCS Log
+	
+$Log: order.tim,v $
+Revision 1.4  1995/03/10  03:52:35  esb
+adapted to new vendor.sig.
+
+Revision 1.3  1995/02/13  23:03:44  esb
+fixed the names.
+
+Revision 1.2  1994/06/16  16:53:09  danwang
+Updated for functorized Fox_Basis
+
+Revision 1.1  1994/02/21  00:20:02  esb
+Initial revision
+
+Revision 1.2  1993/11/04  16:23:22  esb
+added the function run_times.
+
+Revision 1.1  1993/10/29  04:46:02  esb
+Initial revision
+
+
+		1.	functor Time_Order
+*)
+
+functor Time_Order (structure V: VENDOR
+		    structure Debug: DEBUG
+		    structure Copy: COPY) =
+ struct
+
+  local
+   fun run_test (name, src, dest, bytes, count) =
+        let val source = ByteArray.array (src + bytes, 7)
+            val destination = ByteArray.array (dest + bytes, 0)
+	    val arg = (source, src, bytes, destination, dest)
+	    val V.Time.TIME {sec = start_s,
+			     usec = start_u} = V.Time.gettimeofday ()
+	    fun loop 0 = ()
+	      | loop n = (Copy.copy arg; loop (n - 1))
+	    val _ = loop count
+	    val V.Time.TIME {sec = end_s,
+			     usec = end_u} = V.Time.gettimeofday ()
+	    val delta = (end_s - start_s) * 1000000 + end_u - start_u
+	    val delta_ms = delta div 1000
+	    val bytes_per_ms = (bytes * count) div delta_ms
+        in V.Print.print (name ^ ", " ^
+			  V.Integer.makestring count ^
+			  " iterations, total time " ^
+			  V.Integer.makestring delta_ms ^ " ms, rate " ^
+			  V.Integer.makestring bytes_per_ms ^ " bytes/ms\n")
+	end
+
+  in
+
+   fun run () = 
+        (run_test ("unaligned copy", 0, 1, 1501, 1000);
+         run_test ("aligned-2 copy", 0, 2, 1501, 1000);
+         run_test ("aligned-4 copy", 0, 8, 1501, 1000))
+
+   fun run_times n = 
+        (run_test ("unaligned copy", 0, 1, 1501, n);
+         run_test ("aligned-2 copy", 0, 2, 1501, n);
+         run_test ("aligned-4 copy", 0, 8, 1501, n))
+
+  end (* local *)
+
+ end (* struct *)
+
+(*
+		2.	structure Time_Order
+*)
+
+structure Time_Order = Time_Order (structure Debug = Fox_Basis.Debug
+				  structure V = Fox_Basis.V
+				  structure Copy = Fox_Basis.Copy)
+
+
+
+

@@ -1,0 +1,77 @@
+(*
+
+	FoxNet: The Fox Project's Communication Protocol Implementation Effort
+	Edoardo Biagioni (Edoardo.Biagioni@cs.cmu.edu)
+	Brian Milnes (Brian.Milnes@cs.cmu.edu)
+	Ken Cline (Kenneth.Cline@cs.cmu.edu)
+        Nick Haines (Nick.Haines@cs.cmu.edu)
+	Fox Project
+	School of Computer Science
+	Carnegie Mellon University
+	Pittsburgh, Pa 15213-3891
+
+		i.	Abstract
+
+	A stand-alone Ftp stack.
+
+		ii.	Table of Contents
+
+	i.	Abstract
+	ii.	Table of Contents
+	iii.	RCS Log
+	1.	structure Ftp
+
+		iii.	RCS Log
+	
+$Log: ftp.str,v $
+Revision 1.2  1994/10/27  10:25:33  cokasaki
+better dns support, added Remote_Operation_Failed exception
+
+Revision 1.1  94/08/25  11:48:49  cokasaki
+Initial revision
+	
+
+*)
+
+(*
+	1.	structure Ftp
+*)
+
+local
+    structure Device = Build_Eth_Dev(structure B = Fox_Basis
+				     val protocol_numbers = [2ux800,2ux806]
+				     val high_priority_filter = true
+				     val do_prints = false)
+
+    structure Stack = Build_Udp_Tcp (structure B = Fox_Basis
+				     structure Device = Device.Eth_Dev
+				     val ip_over_eth = 2ux800
+				     val tcp_over_ip = 1u6
+				     val udp_over_ip = 1u17
+				     val local_ip = NONE
+				     val tcp_initial_window_size = 4096
+				     val user_timeout = 600000 (* 10 minutes *)
+                                     val default_gateway = SOME (Test_Addresses.default_gateway)
+				     val do_prints = false)
+
+    structure Dns = Dns(structure B = Fox_Basis
+			structure Tcp_Or_Udp = Stack.Udp
+			datatype Tcp_Or_Udp = Tcp | Udp
+			val Tcp_Or_Udp = Udp
+			fun make_address (ip,port) = 
+			    Stack.Udp.Address
+			    (Stack.Udp.Key
+			     {peer = ip,
+			      remote_port = 2u53, (* See /etc/services. *)
+			      local_port = port})
+			val do_traces = false
+			val do_prints = false)
+	
+in
+    structure Ftp = Ftp(structure B = Fox_Basis
+			structure Ip = Stack.Ip
+			structure Tcp = Stack.Tcp
+			structure Dns = Dns
+			val verbose = true
+			val do_prints = false)
+end

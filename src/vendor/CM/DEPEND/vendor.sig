@@ -1,0 +1,2 @@
+Decl 4
+qs$VENDOR_CHAR.sq;-;s$VENDOR_STRING.sq;-;s$VENDOR_LIST.sq;-;s$VENDOR_ARRAY.sq;-;s$VENDOR_CONTROL.sq;-;s$VENDOR_PRINT.sqrWord8.Word8Array.;;-;s$VENDOR_TIME.sq;-;s$VENDOR_MISC.sqrWord8Array.;;-;s$VENDOR_IO.sq;-;s$VENDOR.sqsChar.v$VENDOR_CHAR.;-;sString.v$VENDOR_STRING.;-;sList.v$VENDOR_LIST.;-;sArray.v$VENDOR_ARRAY.;-;sControl.v$VENDOR_CONTROL.;-;sPrint.v$VENDOR_PRINT.;-;sTime.v$VENDOR_TIME.;-;sMisc.v$VENDOR_MISC.;-;sIO.v$VENDOR_IO.;-;rString.Char.;;-;;

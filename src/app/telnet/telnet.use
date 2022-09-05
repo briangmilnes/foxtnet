@@ -1,0 +1,20 @@
+val stuff_use = [
+  "wrapper.sml",
+  "stuff.sml"
+]
+
+val telnet_use = [
+  "telnet_opt.sig",
+  "telnet_io.sig",
+  "telnet.sig",
+  "telnet_opt.fun",
+  "telnet_io.str",
+  "telnet.fun",
+  "telnet.str",
+  "telnet_client.fun",
+  "telnet_server.fun"
+]
+
+val all_use = stuff_use @ telnet_use
+
+val _ = map use all_use

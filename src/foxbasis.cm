@@ -1,0 +1,125 @@
+(*
+
+	Fox Net: The Fox Project's Communication Protocol Implementation Effort
+	Edoardo Biagioni (Edoardo.Biagioni@cs.cmu.edu)
+	Ken Cline (Kenneth.Cline@cs.cmu.edu)
+	Brian Milnes (Brian.Milnes@cs.cmu.edu)
+        Nick Haines (Nick.Haines@cs.cmu.edu)
+	Fox Project
+	School of Computer Science
+	Carnegie Mellon University
+	Pittsburgh, Pa 15213-3891
+
+		i.	Abstract
+
+	Fox Basis Compilation Manager file.
+
+
+		ii.	Table of Contents
+
+	i.	Abstract
+	ii.	Table of Contents
+	iii.	RCS Log
+	1.	exported structures
+
+		iii.	RCS Log
+	
+$Log: foxbasis.cm,v $
+Revision 1.8  1997/04/17  14:06:53  esb
+added cache.sig and cache.fun
+
+Revision 1.7  97/02/06  22:09:28  cline
+*** empty log message ***
+
+Revision 1.6  96/01/15  18:00:49  cline
+removed FoxWord
+
+Revision 1.5  1995/08/16  21:25:04  esb
+added writeonce variables.
+
+Revision 1.4  1995/08/08  18:28:19  cline
+exported a few signatures
+
+Revision 1.3  1995/06/29  18:22:13  esb
+added word48array.str, removed VECTOR_SEQ and VECTOR_SEQUENCE.
+
+Revision 1.2  1995/06/23  15:47:12  cline
+updated table of contents
+
+Revision 1.1  1995/06/20  16:19:04  esb
+Initial revision
+
+
+		1.	exported structures
+*)
+
+Group
+
+is
+
+vendor/bits.str
+vendor/word.sig
+vendor/word.fun
+vendor/vendor.sig
+vendor/vendor.fun
+util/seq/sequence.sig
+util/seq/seq.sig
+util/seq/sequence.fun
+util/seq/compare.fun
+util/seq/wordarray.str
+util/seq/oddwordarray.sig
+util/seq/oddwordarray.str
+debug/debug.sig
+debug/trace.sig
+test/test.sig
+util/bytearrays/copy.sig
+util/bytearrays/create.sig
+util/order/order.sig
+util/bytearrays/format.sig
+util/bytearrays/access.sig
+filter/filter.sig
+extern/extern.sig
+extern/word/externkey.sig
+extern/word/externkey.fun
+util/checksum.sig
+util/store.sig
+util/unaligned.sig
+util/tree.sig
+util/priority.sig
+util/fifo.sig
+util/environ.sig
+util/deq.sig
+util/cache.sig
+test/teststructure.sig
+control/coro.sig
+control/event.sig
+control/pipe.sig
+control/sem.sig
+control/writeonce.sig
+util/tabulate.sml
+basis/basis.sig
+debug/debug.fun
+debug/trace.fun
+util/priority.fun
+control/coro.fun
+control/event.fun
+control/pipe.fun
+control/sem.fun
+control/writeonce.fun
+extern/externstring.fun
+util/unaligned.sml
+filter/filter.fun
+test/test.fun
+util/checksum.fun
+util/deq.fun
+util/environ.fun
+util/fifo.fun
+util/store.fun
+util/tree.fun
+util/cache.fun
+util/bytearrays/access.fun
+util/bytearrays/format.fun
+util/bytearrays/copy.fun
+util/bytearrays/create.fun
+util/order/order.fun
+basis/basis.str

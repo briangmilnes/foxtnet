@@ -1,0 +1,91 @@
+(*
+	FoxNet: The Fox Project's Communication Protocol Implementation Effort
+	Edo Biagioni (esb@cs.cmu.edu)
+	Fox Project
+	School of Computer Science
+	Carnegie Mellon University
+	Pittsburgh, Pa 15139-3891
+
+	i.	Abstract
+
+	host_id: The Host_Id structure for IPv4
+
+	ii.	Table of Contents
+
+	i.	Abstract
+	ii.	Table of Contents
+	iii.	RCS Log
+	1.	structure Ip_Host_Id
+
+	iii.	RCS Log
+
+$Log: hostid.str,v $
+Revision 1.4  1996/04/18  21:01:36  cline
+converted hash from int to word
+
+Revision 1.3  1996/03/04  21:25:42  esb
+added signature constraint to structure.
+
+Revision 1.2  1996/02/27  18:28:42  esb
+renamed.
+
+Revision 1.1  1996/02/27  18:27:58  cline
+Initial revision
+
+	1.	structure Ip_Host_Id
+*)
+
+structure Ip_Host_Id: NETWORK_HOST_ID =
+  struct
+    type T = Word32.word
+    val byte_mask = Word32.fromInt (*0w*)0xff : Word32.word
+    fun makestring_one (byte, shift) =
+	  Integer.toString
+	   (Word32.toInt
+	    (Word32.andb (Word32.>> (byte, shift), byte_mask)))
+    fun makestring host_id =
+	  (makestring_one (host_id, 0w24) ^ "." ^
+	   makestring_one (host_id, 0w16) ^ "." ^
+	   makestring_one (host_id, 0w8) ^ "." ^
+	   makestring_one (host_id, 0w0))
+    val zero = Word32.fromInt (*0w*)0 : Word32.word
+    val ten = Word32.fromInt (*0w*)10 : Word32.word
+    fun parse_digit (#"0") = SOME (Word32.fromInt 0)
+      | parse_digit (#"1") = SOME (Word32.fromInt 1)
+      | parse_digit (#"2") = SOME (Word32.fromInt 2)
+      | parse_digit (#"3") = SOME (Word32.fromInt 3)
+      | parse_digit (#"4") = SOME (Word32.fromInt 4)
+      | parse_digit (#"5") = SOME (Word32.fromInt 5)
+      | parse_digit (#"6") = SOME (Word32.fromInt 6)
+      | parse_digit (#"7") = SOME (Word32.fromInt 7)
+      | parse_digit (#"8") = SOME (Word32.fromInt 8)
+      | parse_digit (#"9") = SOME (Word32.fromInt 9)
+      | parse_digit _ = NONE
+    fun parse_one ([], acc) = (acc, [])
+      | parse_one (#"." :: rest, acc) = (acc, rest)
+      | parse_one (digit :: rest, acc) =
+	 case (parse_digit digit, acc) of
+	    (NONE, _) => (NONE, rest)
+	  | (SOME d, NONE) => parse_one (rest, SOME d)
+	  | (SOME d, SOME prev) =>
+	     parse_one (rest, SOME (Word32.+ (Word32.* (prev, ten), d)))
+    fun join32 (n, shift, y) = Word32.orb (Word32.<< (n, shift), y)
+    fun parse string =
+	 case parse_one (explode string, NONE) of
+	    (NONE, _) => NONE
+	  | (SOME byte1, string1) =>
+	     case parse_one (string1, NONE) of
+		(NONE, _) => NONE
+	      | (SOME byte2, string2) =>
+		 case parse_one (string2, NONE) of
+		    (NONE, _) => NONE
+		  | (SOME byte3, string3) =>
+		     case parse_one (string3, NONE) of
+		        (NONE, _) => NONE
+		      | (SOME byte4, string4) =>
+			 SOME (join32 (byte1, 0w24,
+					join32 (byte2, 0w16,
+						join32 (byte3, 0w8, byte4))))
+    fun equal (a: T, b) = a = b
+    val hash = Word31.fromLargeWord
+  end (* struct *)

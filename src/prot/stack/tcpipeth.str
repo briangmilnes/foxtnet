@@ -1,0 +1,165 @@
+(*
+
+	FoxNet: The Fox Project's Communication Protocol Implementation Effort
+	Edoardo Biagioni (Edoardo.Biagioni@cs.cmu.edu)
+	Brian Milnes (Brian.Milnes@cs.cmu.edu)
+	Ken Cline (Kenneth.Cline@cs.cmu.edu)
+        Nick Haines (Nick.Haines@cs.cmu.edu)
+	Fox Project
+	School of Computer Science
+	Carnegie Mellon University
+	Pittsburgh, Pa 15213-3891
+
+		i.	Abstract
+
+	A top level structure file for TCPIP built over Eth.
+
+
+		ii.	Table of Contents
+
+	i.	Abstract
+	ii.	Table of Contents
+	iii.	RCS Log
+	1.	structure Trace
+	2.	structure No_Trace
+	3.	structure Default_Protocol_Numbers
+	4.	structure Tcp_Ip_Eth
+
+		iii.	RCS Log
+	
+$Log: tcpipeth.str,v $
+Revision 1.1  1995/06/20  17:20:09  esb
+Initial revision
+
+Revision 1.7  1995/03/24  00:18:29  esb
+made slightly more user-friendly.
+
+Revision 1.6  1995/03/21  17:17:06  cstone
+Added address parameter to functor.
+
+Revision 1.5  1995/03/07  23:52:52  esb
+updated tracing.
+
+Revision 1.4  1995/01/06  01:37:14  esb
+name change.
+
+Revision 1.3  1994/11/10  16:13:13  milnes
+Updated for debug_trace.
+
+Revision 1.2  1994/10/19  23:19:26  milnes
+added structure Addressing.
+
+Revision 1.1  1994/10/10  18:27:11  milnes
+Initial revision
+
+		1.	structure Trace
+*)
+
+structure Trace =
+ struct
+  val stack_level = ref 0
+  val dns_level = ref 0
+  val tcp_level = ref 0
+  val udp_level = ref 0
+  val ip_level = ref 0
+  val icmp_level = ref 0
+  val arp_level = ref 0
+  val eth_level = ref 0
+  val dev_level = ref 0
+
+  val stack = SOME stack_level
+  val dns = SOME dns_level
+  val tcp = SOME tcp_level
+  val udp = SOME udp_level
+  val ip = SOME ip_level
+  val icmp = SOME icmp_level
+  val arp = SOME arp_level
+  val eth = SOME eth_level
+  val dev = SOME dev_level
+ end (* struct *)
+
+(*
+		2.	structure No_Trace
+*)
+
+structure No_Trace: TCP_IP_ETH_TRACE =
+ struct
+  val stack = NONE
+  val dns = NONE
+  val tcp = NONE
+  val udp = NONE
+  val ip = NONE
+  val icmp = NONE
+  val arp = NONE
+  val eth = NONE
+  val dev = NONE
+ end (* struct *)
+
+(*
+		3.	structure Default_Protocol_Numbers
+*)
+
+structure Default_Protocol_Numbers: TCP_IP_ETH_PROTOCOL_NUMBERS =
+ struct
+   (* Ethernet Protocol Numbers *)
+  val ip_over_eth  = SW.n16"0x800"
+  val arp_over_eth = SW.n16"0x806"
+
+   (* IP Protocol Numbers *)
+  val icmp_over_ip = SW.n8"1"  (* [RFC 0790, page 6] *)
+  val tcp_over_ip  = SW.n8"6"  (* [RFC 0790, page 6] *)
+  val udp_over_ip  = SW.n8"17" (* [RFC 0790, page 6] *)
+ end
+
+(*
+		4.	functor Tcp_Ip_Eth
+*)
+
+functor Tcp_Ip_Eth (structure Trace: TCP_IP_ETH_TRACE
+		    structure Protocol_Numbers: TCP_IP_ETH_PROTOCOL_NUMBERS) =
+ struct
+  local
+
+   structure Addressing_Types =
+    struct
+     datatype gateway = Gateway of {name : string, ip : FoxWord32.word}
+     datatype interface = 
+      Interface of {name : string, ip : FoxWord32.word, 
+		    mask : FoxWord32.word option,
+		    gateways : gateway list}
+     datatype host = Host of {name : string, interfaces : interface list}
+     datatype alias = Alias of {name : string option, host : host}
+     exception Bad_Initialization of string
+    end (* struct *)
+
+   structure Parser = Link_Parser (structure V = Fox_Basis.V)
+   structure Os_Addressing = Os_Addressing (structure B = Fox_Basis
+					    structure AT = Addressing_Types
+					    structure Link_Parser = Parser)
+   structure Addressing = Addressing (structure B = Fox_Basis
+				      structure Addressing_Types =
+				                Addressing_Types
+				      structure Os_Addressing = Os_Addressing
+				      structure Link_Parser = Parser
+				      val debug_level = Trace.stack)
+				      
+   structure Build =
+       Build_Tcp_Ip_Eth (structure B = Fox_Basis
+			 structure Protocol_Numbers = Default_Protocol_Numbers
+			 structure Stack_Trace = Trace
+			 structure Addressing = Addressing
+                         val stack_address = ! Addressing.default)
+  in
+   open Build
+
+  end (* local *)
+ end (* struct *)
+
+(*
+		4.	structure Tcp_Ip_Eth
+*)
+
+structure Tcp_Ip_Eth =
+    Tcp_Ip_Eth (structure Trace = Trace
+		structure Protocol_Numbers = Default_Protocol_Numbers)
+

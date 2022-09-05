@@ -1,0 +1,106 @@
+(*
+
+	FoxNet: The Fox Project's Communication Protocol Implementation Effort
+	Edoardo Biagioni <Edoardo.Biagioni@cs.cmu.edu>
+	Nick Haines  (Nick.Haines@cs.cmu.edu)
+	Brian Milnes (Brian.Milnes@cs.cmu.edu)
+	Fox Project
+	School of Computer Science
+	Carnegie Mellon University
+	Pittsburgh, Pa 15139-3891
+
+		i.	Abstract
+
+	Test code to test the speed of the Checksum utility.
+
+		ii.	Table of Contents
+
+	i.	Abstract
+	ii.	Table of Contents
+	iii.	RCS Log
+	1.	functor Time_Checksum
+	2.      structure Time_Checksum
+
+		iii.	RCS Log
+	
+$Log: checksum.tim,v $
+Revision 1.8  1996/10/03  18:02:36  derby
+Update for new time prims. in Vendor.
+
+Revision 1.7  1996/04/05  21:56:17  esb
+compiles.
+
+Revision 1.6  1995/03/10  03:52:24  esb
+adapted to new vendor.sig.
+
+Revision 1.5  1994/06/16  16:51:18  danwang
+Updated for functorized Fox_Basis
+
+Revision 1.4  1994/02/25  22:57:24  esb
+added additional tests.
+
+Revision 1.3  94/02/08  14:11:14  esb
+reversed the order of the tests.
+
+Revision 1.2  93/12/23  23:13:23  esb
+changed check_sum to checksum and added checklist.
+
+Revision 1.1  1993/11/02  22:33:06  esb
+Initial revision
+
+
+		1.	functor Test_Checksum
+*)
+
+functor Time_Checksum (structure Checksum: CHECKSUM
+		       structure V: VENDOR
+		       structure Debug: DEBUG) =
+ struct
+
+  local
+   fun run_test (name, src, bytes, count) =
+        let fun fill index = Word8.fromInt (Word.toInt index mod 256)
+	    val source = Word_Array.W8.Native.F.tabulate (fill, src + bytes)
+	    val value = Word_Array.from8 (Word_Array.W8.Native.F.seek
+					  (source, src))
+	    fun loop 0w0 = ()
+	      | loop n = (Checksum.checksum value; loop (n - 0w1))
+	    val start = V.Time.now ()
+	    val _ = loop count
+	    val finish = V.Time.now ()
+	    val delta = V.Time.- (finish, start)
+	    val delta_ms = V.Time.toSeconds delta * 1000 + V.Time.toMilliseconds delta
+	    val bytes_per_ms = Word.toInt (bytes * count) div delta_ms
+        in V.Print.print (name ^ ", " ^
+			  Int.toString (Word.toInt bytes) ^ " bytes x " ^
+			  Int.toString (Word.toInt count) ^ " iterations, " ^
+			  Int.toString delta_ms ^ " ms, " ^
+			  Int.toString bytes_per_ms ^ " bytes/ms\n")
+        end
+
+  in
+   fun run_times n = 
+        (run_test ("aligned-4 checksum", 0w4, 0w1500, n);
+         run_test ("aligned-2 checksum", 0w2, 0w1500, n);
+         run_test ("unaligned checksum", 0w1, 0w1501, n);
+         run_test ("aligned-4 checksum", 0w4, 0w20, n * 0w10);
+         run_test ("aligned-2 checksum", 0w2, 0w20, n * 0w10);
+         run_test ("unaligned checksum", 0w1, 0w21, n * 0w10))
+
+   fun run () = run_times 0w1000
+  end (* local *)
+
+ end (* struct *)
+
+(*
+		2. structure Test_Checksum
+*)
+
+structure Time_Checksum = Time_Checksum (structure Checksum =
+					     Fox_Basis.Checksum
+					 structure Debug = Fox_Basis.Debug
+					 structure V = Fox_Basis.V)
+
+
+
+

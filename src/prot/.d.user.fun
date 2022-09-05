@@ -1,0 +1,2 @@
+Decl 2
+(b f%User (l (h (d (a s%Trace (i f%Trace (h (a s%V (g s%B.V) 0)) F) 0) (f s%Trace) (a s%UPT (g s%Protocol) (g s$USER_PROTOCOL_TYPES)) (a s%CO (h (d (a s%UPT (g s%UPT) 0) (f s%B s%Protocol))) (g s$CONNECTION_ORIENTED)) (a s%CL (h (d (a s%UPT (g s%UPT) 0) (f s%Protocol s%B))) (g s$CONNECTIONLESS)) (f s%Protocol))) (g s$USER_PROTOCOL) 0 (h (d (a s%Protocol (g s$PROTOCOL) 0) (f s%Protocol) (a s%B (g s$FOX_BASIS) 0)))))

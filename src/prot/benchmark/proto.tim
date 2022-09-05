@@ -1,0 +1,625 @@
+(*
+
+	FoxNet: The Fox Project's Communication Protocol Implementation Effort
+	Brian Milnes (Brian.Milnes@cs.cmu.edu)
+	Nick Haines  (Nick.Haines@cs.cmu.edu)
+	Edoardo Biagioni <Edoardo.Biagioni@cs.cmu.edu>
+	Fox Project
+	School of Computer Science
+	Carnegie Mellon University
+	Pittsburgh, Pa 15139-3891
+
+	i.	Abstract
+
+This file defines a signature and functor to build a TCP/IP stack for
+timing.  It provides a general client/server control using TCP
+connections over lower level structures that implement the individual
+timing test.
+
+	ii.	Table of Contents
+
+	i.	Abstract
+	ii.	Table of Contents
+	iii.	RCS Log
+	1.	signature BENCHMARK_PROTOCOLS
+	2.	functor Benchmark_Protocols
+	3.	timing structures
+	4.	structure Timing_Test
+	5.	string functions
+	6.	function dispatch_client
+	7.	function dispatch_server
+	8.	function serve_a_test
+	9.	function server 
+	10.	function client
+	11.	shared datatypes
+
+	iii.	RCS Log
+
+$Log: proto.tim,v $
+Revision 1.1  1995/06/20  17:27:21  esb
+Initial revision
+
+Revision 1.22  1995/03/10  03:49:26  esb
+partial port to 1.07.
+
+Revision 1.21  1995/01/14  02:27:10  esb
+adapted to new filter interface.
+
+Revision 1.20  1994/09/12  18:20:35  milnes
+Added timing for ip_no_icmp/ip.
+
+Revision 1.19  1994/08/24  22:28:56  esb
+changed print statements, counter names.
+
+Revision 1.18  1994/08/17  16:32:15  esb
+the benchmarks now work.
+
+Revision 1.17  1994/07/07  16:34:09  esb
+adapted to Timing_Test functor.
+
+Revision 1.16  1994/07/01  02:35:04  danwang
+Moved control structures into Fox_Basis.
+
+Revision 1.15  1994/06/20  20:16:21  esb
+adapted to benchmark.sig.
+
+Revision 1.14  1994/06/16  21:52:05  danwang
+Updated to use functorized Fox_Basis.
+
+Revision 1.13  1994/05/04  01:39:07  esb
+major debugging. Almost everything seems to run now.
+
+Revision 1.12  94/04/26  17:55:31  esb
+adapted to new COROUTINE signature.
+
+Revision 1.11  94/04/20  14:46:13  milnes
+Split out test emit/parse.
+
+Revision 1.8  1994/03/29  17:44:40  milnes
+./prot/proto.tim
+Split tests out into tests.tim.
+
+Revision 1.7  1994/03/04  02:27:18  milnes
+Many small changes, timeouts, some error handling and so on.
+
+Revision 1.6  1994/02/25  18:35:12  milnes
+Updated timing and moved to safe array operations.
+
+Revision 1.5  1994/02/18  14:33:35  milnes
+Extended the timing calls and made the fast path timing calls non-cumulative.
+
+Revision 1.4  1994/02/17  17:10:27  milnes
+Checked out, reinstalled old, rechecked in to repair the afs file move 
+problems that confused rcs.
+
+Revision 1.2  1994/02/14  19:18:47  milnes
+Many changes, working well.
+
+Revision 1.1  1994/02/08  19:10:23  milnes
+Initial revision
+
+	1.	signature BENCHMARK_PROTOCOLS
+
+	A signature for a structure that times protocol stacks.
+*)
+
+
+signature BENCHMARK_PROTOCOLS =
+ sig
+  datatype protocol = Eth | Ip_No_Icmp | Ip | Udp | Tcp 
+  datatype check_data = None | Some | All 
+  datatype
+      test = Test of {protocol: protocol,
+		      repetitions: ubyte4,
+		      size: ubyte4,
+		      confirm: ubyte4,
+		      check_data: check_data,
+		      print_packets: bool,
+		      print_history: bool}
+
+  structure Stack: 
+   sig
+    structure Device: DEVICE_PROTOCOL
+    structure Eth: ETHERNET_PROTOCOL
+    structure Ip_No_Icmp: IP_PROTOCOL
+    structure Ip: IP_PROTOCOL
+    structure Udp: UDP_PROTOCOL
+    structure Tcp: TCP_PROTOCOL
+   end (* sig *)
+
+  val server: int -> unit
+  val client: test * string -> unit
+ end (* sig *)
+
+(*
+	2.	functor Benchmark_Protocols, the protocol stack
+*)
+
+functor Benchmark_Protocols
+           (structure B: FOX_BASIS
+	      sharing type Buffer.buf = B.Filter.device_filter
+	    val debug_level: int ref option): BENCHMARK_PROTOCOLS = 
+ struct
+  structure Trace = Trace (structure V = B.V
+			   val debug_level = debug_level
+			   val module_name = "proto.tim")
+  val local_print = Trace.local_print
+  val debug_print = Trace.debug_print
+  val protocol_debug = if Trace.debug_on () then SOME (ref 2) else NONE
+
+ (* Provide some dispatch numbers for the levels of the protocols and
+    timing structures. *)
+
+  val ip_over_eth = 2ux801 
+  (* 2ux800 is standard but it disconnects the machines while testing. *)
+  val udp_over_ip = 1ux17
+  val tcp_over_ip = 1u6
+  
+  val timing_over_eth = 2ux109
+  val timing_over_ip = 1ux18
+  val udp_timing_port = 2ux1111  (* decimal 4369 *)
+  val tcp_timing_port = 2ux666   (* decimal 1638 *)
+
+  val protocol_numbers = [timing_over_eth, ip_over_eth]
+
+  structure Dev = Build_Eth_Dev (structure B = B
+			         val ip_address_option = NONE
+				 val protocol_numbers = protocol_numbers
+				 val high_priority_filter = true
+				 val debug_level = protocol_debug)
+
+  structure Stack = 
+   struct
+    local
+     structure All_But_Udp = Build_Tcp (structure Device = Dev.Eth_Dev
+					structure B = B
+					val ip_over_eth = ip_over_eth
+					val tcp_over_ip = tcp_over_ip
+					val local_ip = NONE
+					val initial_window_size = 4096
+					val user_timeout = 240000
+                                        val default_gateway = SOME (Test_Addresses.default_gateway)
+					val debug_level = protocol_debug)
+     fun ip_equal (a, b: All_But_Udp.Ip.ip_number) = a = b
+     fun ip_checksum ip =
+          let val buffer = B.Create.create 4
+	  in FoxWord32.update (buffer, 0, B.Order.B4.to_big ip);
+	     B.Checksum.checksum (buffer, 0, 4)
+	  end
+
+     val protocol_checksum =
+           FoxWord16.from_int (FoxWord8.wordToInt udp_over_ip)
+
+    in
+     open All_But_Udp
+     structure Udp = Udp (structure Lower = All_But_Udp.Ip
+			  structure B = B
+			  val ip_equal = ip_equal
+			  val ip_checksum = ip_checksum
+			  val udp_protocol = udp_over_ip
+			  val protocol_checksum = protocol_checksum
+			  val compute_checksums = false
+			  val debug_level = protocol_debug)
+    end (* local *)
+   end (* struct *)
+
+(*
+	3.	timing structures
+
+	Construct an auxiliary structure for each ply of the protocols
+	that we wish to time, plug these into the Benchmark_Protocol
+	structures.
+*)
+
+  structure Eth_Tim = Eth_Tim (structure Eth = Stack.Eth
+			       structure Device = Dev.Eth_Dev
+			       structure B = B
+			       val protocol_number = timing_over_eth
+			       val debug_level = debug_level)
+
+  structure Bmark_Eth =
+      Benchmark_Protocol (structure Scheduler = B.Scheduler 
+			  structure P = Stack.Eth
+			  structure Aux = Eth_Tim 
+			  structure B = B
+			  structure Event_Queue = B.Event_Queue
+			  val timer_counter = ethtim_counter
+			  val wait_per_packet = 15000
+			  val wait_per_confirm = 15000
+			  val wait_per_data_byte = 10
+			  val streaming_protocol = false
+			  val debug_level = debug_level)
+
+  structure Ip_No_Icmp_Tim = Ip_Tim (structure Ip = Stack.Ip_No_Icmp
+                                     structure B = B
+                                     val print_header = "ip_no_icmp: "
+			             val protocol_number = timing_over_ip
+			             val debug_level = false)
+
+  structure Bmark_Ip_No_Icmp =
+      Benchmark_Protocol (structure Scheduler = B.Scheduler 
+			  structure P = Stack.Ip_No_Icmp
+			  structure Aux = Ip_No_Icmp_Tim
+			  structure B = B
+			  structure Event_Queue = B.Event_Queue
+			  val timer_counter = iptim_counter
+			  val wait_per_packet = 40000
+			  val wait_per_confirm = 30000
+			  val wait_per_data_byte = 20
+			  val streaming_protocol = false
+			  val debug_level = debug_level)
+
+  structure Ip_Tim = Ip_Tim (structure Ip = Stack.Ip
+			     structure B = B
+                             val print_header = "ip: "
+			     val protocol_number = timing_over_ip
+			     val debug_level = false)
+
+  structure Bmark_Ip =
+      Benchmark_Protocol (structure Scheduler = B.Scheduler 
+			  structure P = Stack.Ip
+			  structure Aux = Ip_Tim
+			  structure B = B
+			  structure Event_Queue = B.Event_Queue
+			  val timer_counter = iptim_counter
+			  val wait_per_packet = 40000
+			  val wait_per_confirm = 30000
+			  val wait_per_data_byte = 20
+			  val streaming_protocol = false
+			  val debug_level = debug_level)
+
+  structure Udp_Tim = Udp_Tim (structure Udp = Stack.Udp
+			       structure B = B
+			       val local_port = udp_timing_port
+			       val remote_port = udp_timing_port
+			       val debug_level = debug_level)
+
+  structure Bmark_Udp =
+      Benchmark_Protocol (structure Scheduler = B.Scheduler 
+			  structure P = Stack.Udp
+			  structure Aux = Udp_Tim
+			  structure B = B
+			  structure Event_Queue = B.Event_Queue
+			  val timer_counter = udptim_counter
+			  val wait_per_packet = 30000
+			  val wait_per_confirm = 20000
+			  val wait_per_data_byte = 20
+			  val streaming_protocol = false
+			  val debug_level = debug_level)
+
+  structure Tcp_Tim = Tcp_Tim (structure Tcp = Stack.Tcp
+			       structure B = B
+			       val local_port = tcp_timing_port
+			       val remote_port = tcp_timing_port
+			       val debug_level = debug_level)
+
+  structure Bmark_Tcp =
+      Benchmark_Protocol (structure Scheduler = B.Scheduler 
+			  structure P = Stack.Tcp
+			  structure Aux = Tcp_Tim
+			  structure B = B
+			  structure Event_Queue = B.Event_Queue
+			  val timer_counter = tcptim_counter
+			  val wait_per_packet = 50000
+			  val wait_per_confirm = 50000
+			  val wait_per_data_byte = 50
+			  val streaming_protocol = true
+			  val debug_level = debug_level)
+
+(*
+	4.	structure Timing_Test
+
+	The control connection receives a packet from the client
+	sender requesting a specific timing test. This structure is
+	used to emit and parse a binary representation of the test.
+*)
+
+  structure Timing_Test = Timing_Test (structure B = B)
+
+(*
+	5.	string functions
+*) 
+
+  (* Make a byte array with size encoded in the first four bytes. *)
+  fun string_to_bytearray string = 
+       let val b = ByteArray.array (size string + 4, 0)
+           fun copy (_, []) = ()
+	     | copy (n, (c :: r)) =
+	        (ByteArray.update (b, n, ord c); copy (n+1, r))
+       in copy (4, explode string);
+	  FoxWord32.update (b, 0,
+			    B.Order.B4.to_big (FoxWord32.from_int (size string)));
+	  b
+       end
+
+  fun string_to_packet (allocate, connection, string) = 
+       let val array = string_to_bytearray string
+	   val size = ByteArray.length array
+	   val (packet, send) = allocate (connection, size)
+       in B.Dyn_Array.update (packet, 0, array);
+	  send
+       end
+
+  fun print_bytearray_as_string (b, i, l) = 
+       if i >= l then l
+       else 
+	let val c = ByteArray.sub (b, i) 
+	in B.V.print (chr c);
+	   print_bytearray_as_string (b, i+1, l)
+	end
+
+  fun print_packet_as_string packet =
+       let val b = B.Dyn_Array.read packet
+       in print_bytearray_as_string (b, 0, ByteArray.length b)
+       end
+
+  fun print_pipe_of_packets_as_string (pipe, total_bytes) =
+       let fun loop n =
+	        if (n >= total_bytes) then ()
+		else loop (n + (print_packet_as_string (B.Pipe.dequeue pipe)))
+       in loop 0
+       end
+
+(*
+	6.	function dispatch_client
+
+	Translate a universal client test into the argument/data type
+	formats required by the individual modules.
+*)
+
+  fun dispatch_client (Timing_Test.Test {protocol, repetitions, size, confirm, 
+					 check_data, print_packets,
+					 print_history}, remote) =
+       (case protocol of
+	   Timing_Test.Eth =>
+	    (Bmark_Eth.run_client ({repetitions = repetitions,
+				    size = size, confirm = confirm,
+				    print_history = print_history},
+				   Eth_Tim.translate_address remote))
+	 | Timing_Test.Ip_No_Icmp =>
+	    (Bmark_Ip_No_Icmp.run_client ({repetitions = repetitions,
+				   size = size, confirm = confirm,
+				   print_history = print_history},
+				  Ip_No_Icmp_Tim.translate_address remote))
+	 | Timing_Test.Ip =>
+	    (Bmark_Ip.run_client ({repetitions = repetitions,
+				   size = size, confirm = confirm,
+				   print_history = print_history},
+				  Ip_Tim.translate_address remote))
+	 | Timing_Test.Udp =>
+	    (Bmark_Udp.run_client ({repetitions = repetitions,
+				    size = size, confirm = confirm,
+				    print_history = print_history},
+				   Udp_Tim.translate_address remote))
+	 | Timing_Test.Tcp =>
+	    (Bmark_Tcp.run_client ({repetitions = repetitions,
+				    size = size, confirm = confirm,
+				    print_history = print_history},
+				   Tcp_Tim.translate_address remote)))
+         handle x =>
+	         (local_print ("exception " ^ System.exn_name x ^
+			       " raised in dispatch_client");
+		  "exception " ^ System.exn_name x ^ " raised")
+
+(*
+	7.	function dispatch_server
+
+	Translate a universal server test into the argument/data type
+	formats required by the individual modules.
+*)
+
+  fun dispatch_server (test, remote) =
+       (let val Timing_Test.Test {protocol, repetitions, size, confirm, 
+				  check_data = check, print_packets,
+				  print_history} = test
+	    fun ethcheck Timing_Test.None = Eth_Tim.None
+	      | ethcheck Timing_Test.Some = Eth_Tim.Some
+	      | ethcheck Timing_Test.All = Eth_Tim.All
+	    fun ipnoicmpcheck Timing_Test.None = Ip_No_Icmp_Tim.None
+	      | ipnoicmpcheck Timing_Test.Some = Ip_No_Icmp_Tim.Some
+	      | ipnoicmpcheck Timing_Test.All = Ip_No_Icmp_Tim.All
+	    fun ipcheck Timing_Test.None = Ip_Tim.None
+	      | ipcheck Timing_Test.Some = Ip_Tim.Some
+	      | ipcheck Timing_Test.All = Ip_Tim.All
+	    fun udpcheck Timing_Test.None = Udp_Tim.None
+	      | udpcheck Timing_Test.Some = Udp_Tim.Some
+	      | udpcheck Timing_Test.All = Udp_Tim.All
+	    fun tcpcheck Timing_Test.None = Tcp_Tim.None
+	      | tcpcheck Timing_Test.Some = Tcp_Tim.Some
+	      | tcpcheck Timing_Test.All = Tcp_Tim.All
+            fun mktest check_data =
+	         {repetitions = repetitions, size = size, confirm = confirm,
+		  check_data = check_data, print_packets = print_packets,
+		  print_history = print_history}
+        in case protocol of
+	      Timing_Test.Eth =>
+	       Bmark_Eth.run_server (mktest (ethcheck check),
+				     Eth_Tim.translate_address remote)
+	    | Timing_Test.Ip_No_Icmp =>
+	       Bmark_Ip_No_Icmp.run_server (mktest (ipnoicmpcheck check),
+				    Ip_No_Icmp_Tim.translate_address remote)
+	    | Timing_Test.Ip =>
+	       Bmark_Ip.run_server (mktest (ipcheck check),
+				    Ip_Tim.translate_address remote)
+	    | Timing_Test.Udp =>
+	       Bmark_Udp.run_server (mktest (udpcheck check),
+				     Udp_Tim.translate_address remote)
+	    | Timing_Test.Tcp =>
+	       Bmark_Tcp.run_server (mktest (tcpcheck check),
+				     Tcp_Tim.translate_address remote)
+        end)
+         handle x =>
+	         (local_print ("exception " ^ System.exn_name x ^
+			       " raised in dispatch_server");
+		  "exception " ^ System.exn_name x ^ " raised")
+
+(*
+	8.	function serve_a_test
+
+	A client/server model that uses a TCP connection to control
+	the serving of test data structures.
+*)
+
+  val client_port = 2ux111 (* decimal 273 *)
+  val server_port = 2ux222 (* decimal 546 *)
+
+  fun print_bad_input_packet (string, packet) =
+       let fun packet_format_list size = 
+                [B.Format.String "Proto.tim Packet = ",
+	         B.Format.Bytes size, B.Format.String "\n"]
+           val byte_array = B.Dyn_Array.read packet
+           val old_base = ! B.Format.byte_base
+           val length = B.V.Integer.min (70, ByteArray.length byte_array)
+       in B.Format.byte_base := B.Format.Hex;
+	  local_print "received a tcp packet that would not parse";
+	  local_print ("reason described as " ^ string);
+	  app B.V.print
+	  (B.Format.bytearray (packet_format_list length,
+			       byte_array, length));
+	  B.Format.byte_base := old_base
+       end
+
+  fun serve_a_test () =
+       (* Listen for an open request on a tcp port.
+	  When a request comes in, 
+	  parse it,
+	  run the test (it must have a timeout),
+	  print the results into a packet and send it back,
+	  close the connection.
+         *)
+       (debug_print "in serve_a_test";
+	System.Unsafe.CInterface.gc 2;
+	let val pipe = B.Pipe.new NONE
+	    fun receive connection packet =
+	         (B.Pipe.enqueue (pipe, Timing_Test.parse_test packet)
+		  handle (Timing_Test.Parse_Error (string, packet)) =>
+		          print_bad_input_packet (string, packet)
+		       | x =>
+		          local_print ("exception " ^ System.exn_name x ^
+				       " in server receive"))
+	    val _ = debug_print "in server: opening control connection."
+	    val address = Stack.Tcp.Local_Specified {local_port = server_port}
+	    val conn_queue = B.Pipe.new NONE
+	    fun handler connection =
+	         (B.Pipe.enqueue (conn_queue, connection);
+		  (receive connection, fn _ => ()))
+	    val _ = Stack.Tcp.start_passive (address,
+					     Stack.Tcp.Handler handler,
+					     SOME 1)
+	    val connection = B.Pipe.dequeue conn_queue
+	    val _ = debug_print "in server: finished opening."
+	    val tcpkey = Stack.Tcp.connection_key connection
+	    val Stack.Tcp.Key {peer = ip, ...} = tcpkey
+	    val test = B.Pipe.dequeue pipe
+	    val _ = local_print ("serving test " ^
+				 Timing_Test.makestring_test test);
+	    val send = string_to_packet (Stack.Tcp.allocate_send, connection,
+					 dispatch_server (test, ip))
+	in debug_print "in server: sending back string.";
+	   send ();
+	   debug_print "in server: string sent back.";
+	   Stack.Tcp.close connection;
+	   debug_print "in server: closed the connection."
+	end)
+
+(*
+	9.	function server 
+  
+	Ideally, we just run forever:
+		fun server () = (serve_a_test (); server ())
+	In practice, we only run a specified number of loops. 
+*)
+
+  fun server n = 
+       (debug_print "in server";
+	Stack.Tcp.initialize ();
+	Stack.Udp.initialize (); 
+	(serve_a_test ())
+	 handle x => (Stack.Udp.finalize (); Stack.Tcp.finalize (); 
+		      local_print ("exception " ^ System.exn_name x ^
+				   " in server.");
+		      raise x);
+	debug_print "done serving, udp finalize.";
+	Stack.Udp.finalize ();
+	debug_print "tcp finalize.";
+	Stack.Tcp.finalize (); 
+	if n <= 1 then
+	 debug_print "exiting server."
+	else
+	 server (n - 1))
+
+(*
+	10.	function client
+*)
+
+  fun client (test, server) =
+       (System.Unsafe.CInterface.gc 2;
+	Stack.Tcp.initialize ();
+	Stack.Udp.initialize ();
+	(* Wait to give the server time to set up. *)
+	B.Scheduler.sleep 10000;
+	let val pipe = B.Pipe.new NONE
+	    fun receive connection packet =
+	         ((debug_print "client received packet.";
+		   B.Pipe.enqueue (pipe, packet))
+		  handle x =>
+		          local_print ("exception " ^ System.exn_name x ^
+				       " in client receive"))
+	    val _ = debug_print "in client: opening control connection."
+	    val ip_number =
+	         case Test_Addresses.name_ip server of
+		    SOME ip => ip
+		  | NONE =>
+	             (local_print ("in client: unable to resolve name " ^
+				   server);
+		      4u0)
+	    val tcp_addr = Stack.Tcp.Address
+	                    (Stack.Tcp.Key {peer = ip_number,
+					    local_port = client_port,
+					    remote_port = server_port})
+	    fun handler connection = (receive connection, fn _ => ())
+	    val connection = Stack.Tcp.connect (tcp_addr,
+						Stack.Tcp.Handler handler)
+	    val send = Timing_Test.emit_test (Stack.Tcp.allocate_send,
+					      connection, test)
+	in debug_print "in client: sending test.";
+	   local_print ("requesting test " ^
+			Timing_Test.makestring_test test);
+	   send ();
+	   debug_print "in client: finished sending test, running client.";
+	   local_print (dispatch_client (test, ip_number));
+	   debug_print "in client: finished running test.";
+	   let val packet = B.Pipe.dequeue pipe
+	       val data = B.Dyn_Array.sub4 (packet, 0)
+	       val length = Fox_Basis.Order.B4.from_big data
+	   in debug_print "in client: got string packet back.";
+	      B.Pipe.requeue (pipe, (B.Dyn_Array.tail (packet, 4)));
+	      print_pipe_of_packets_as_string (pipe,
+					       FoxWord32.wordToInt length)
+	   end;
+	   debug_print "in client: done printing string from server.";
+	   Stack.Tcp.close connection;
+	   local_print "finished the requested test.";
+	   debug_print "in client: connection closed."
+	end
+         handle x =>
+	         (Stack.Udp.finalize ();
+		  Stack.Tcp.finalize (); 
+		  local_print ("exception " ^ System.exn_name x ^
+			       " in client.");
+		  raise x);
+	Stack.Udp.finalize ();
+	Stack.Tcp.finalize ();
+	())
+
+(*
+	11.	shared datatypes
+*)
+
+  open Timing_Test
+   (* This lets us share the datatypes between the
+       producer and the consumer. *)
+
+ end (* struct *)
+
+

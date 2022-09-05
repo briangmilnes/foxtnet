@@ -1,0 +1,18 @@
+(* TIMEBASE *)
+structure Time32 : TIMEBASE =
+   struct
+      type time = Word32.word
+
+      val op - = Word32.-
+      val op + = Word32.+
+      val op * = fn ( t, i ) => Word32.*( t, Word32.fromInt i )
+      val op div = fn ( t, i ) => Word32.div( t, Word32.fromInt i )
+
+      val op < = Word32.<
+      val op > = Word32.>
+
+      val toString = Word32.toString
+      val toReal = fn x => real (Word32.toInt x)
+
+      val zero = Word32.fromInt 0
+   end

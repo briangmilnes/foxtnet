@@ -1,0 +1,2 @@
+Decl 2
+(b f%Build_Eth_Dev (l (h (c (d (a s%Device (i f%Device (h (d (a s%B (g s%B) 0) (a s%MachIPC (g s%MachIPC) 0) (a s%Word (g s%Word) 0) (a s%Mig_Base (g s%Mig_Base) 0))) F) 0) (f s%System)) (d (a s%Eth_Dev (i f%Ethernet_Device (h (d (a s%Device (g s%Device) 0) (a s%Local_Mach (g s%MachIPC) 0) (a s%Mach_Port (g s%Mach_Port) 0) (a s%Mig_Base (g s%Mig_Base) 0) (a s%Filter (g s%B.Filter) 0) (a s%B (g s%B) 0))) F) 0)))) (g s$BUILD_ETH_DEV) 0 (h (d (a s%B (g s$FOX_BASIS) 0)))))

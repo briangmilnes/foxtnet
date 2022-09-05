@@ -1,0 +1,98 @@
+$Log: README,v $
+Revision 1.5  1994/06/05  17:36:23  robby
+added .lnk extension
+
+# Revision 1.4  94/03/02  21:42:03  esb
+# added RCS log.
+# 
+
+1. Code Typography Conventions
+
+ We are using the following conventions for the typography of our SML code.
+ A. Signature names are entirely uppercased.
+ B. functor names, constructors, and exceptions have initial capitalization
+  (with the exception of the fact that SOME and NONE are all uppercase,
+  and nil is all lowercase).
+
+ C. The other identifiers (i.e., for variables and types) are all lowercased 
+  (unless you use the "T" type-name convention).
+
+ D. You may use _, ', or caps when stringing words together in an identifier.
+
+2. Separate Compilation Conventions
+
+  Each directory contains a "use.sml", this file defines variables that are
+ lists of the full path of the files in the module. These are concatenated
+ and use is mapped across them to load in files. Eventually, source group
+ will work again and we can use these lists to build source groups.
+
+3. File Structuring Conventions
+  
+ The SML files have book format headers constructed from the text in header.sml.
+ The few C files have book format headers constructed from the text in header.c.
+
+ The files contain four types of SML objects: signatures, functors, structures and
+ test functors with their structures. The file's extension tells you its type:
+     signatures - .sig, 
+     functors - .fun, 
+     structures - .str,
+     test functors with their structures - .tst,
+     timing functors with their structures - .tim, and
+     link files - .lnk.
+ 
+4. Debugging Conventions
+
+  A single structure Debug contains flags that determine the compile time inclusion
+of test code, printing code and timing code. Each functor should also take its own
+do_prints flag, and only print debug messages if it is on.
+
+5. Testing Conventions
+
+ A single set of test code utilities exists in
+src/test/test.{sig,fun}.  This provides for interactively constructed
+predicate and output based testing, and provides a set of switches to
+control the reporting of errors and other things.  The default
+structure of this type is Test.
+
+6. Module Conventions
+ 
+  Signatures, Structures and Functors should reference only signatures
+and the byte[1|2|4] and bytearray structures. Everything else should
+be passed as an argument to the functor. This requires using higher
+order functors, but can easily be removed by simply deleting "functor
+..." from each functor argument, and checking for name consistency.
+
+ We create a structure V : VENDOR which is a basis structure for
+everthing else that we reference from a vendor's SML. All modules that
+reference any type or function not in the definition of standard ML
+should take V as an argument structure. All source functors should
+also take Debug and do_print, and all test functors should also take
+Test. A structure TV : VENDOR is created to provide the same
+operations as the vendor structure, except it calls Test.print to
+perform output; this localizes all output so that the test code can
+grab it.
+
+7. Configuration Managment
+
+ All of our source files are equiped with an RCS log entry. Each of
+our src subdirectories has an RCS subdirectory, and all source files
+are RCS'd into this. In FoxNet is esb, milnes and nickh; they contain
+isomorphic directory trees to src whose RCS directories all point to
+the src RCS trees.
+
+ In each directory there is a gnu Makefile which has a makefile target
+and a populate target. The Makefile target checks out the Makefiles of
+the RCS hierarcy, and checks out its subdirectories's Makefiles. The
+capitalization difference allows this to run recursively even if the
+Makefile is up to date.
+
+ Each Makefile has a DIR and a FILES variable that contains the list
+of subdirectories and files. The populate target checks out (unlocked)
+all of the current files in the directory, and calls gmake populate in
+each of the subdirectories.
+
+ Users must check out, modify, and check in files by hand. When one
+checks in a file, one is responsible to start a fresh SML, populate
+src and run the tests on the new baseline.
+
+ 

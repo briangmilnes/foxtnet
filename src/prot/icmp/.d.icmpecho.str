@@ -1,0 +1,2 @@
+Decl 2
+(a s%Icmp_Echos (h (f s%Fox_Basis s%Tcp_Ip_Eth s%Fox_Basis)) 0)

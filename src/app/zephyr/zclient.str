@@ -1,0 +1,184 @@
+(*
+
+	FoxNet: The Fox Project's Communication Protocol Implementation Effort
+	Edoardo Biagioni (Edoardo.Biagioni@cs.cmu.edu)
+	Brian Milnes (Brian.Milnes@cs.cmu.edu)
+	Ken Cline (Kenneth.Cline@cs.cmu.edu)
+        Nick Haines (Nick.Haines@cs.cmu.edu)
+	Robby Findler (Robert.Findler@cs.cmu.edu)
+	Daniel Wang (Daniel.Wang@cs.cmu.edu)
+	Fox Project
+	School of Computer Science
+	Carnegie Mellon University
+	Pittsburgh, Pa 15139-3891
+
+	i.	Abstract
+
+	A simple zephyr client useful for testing and debugging.
+	
+	ii.	Table of Contents
+
+	i.	Abstract
+	ii.	Table of Contents
+	iii.	RCS Log
+	1.	Zclient structure
+      
+
+	iii.	RCS Log
+$Log: zclient.str,v $
+Revision 1.1  1994/09/03  21:15:34  danwang
+Initial revision
+
+Revision 1.1  1994/08/31  02:11:01  danwang
+Initial revision
+	
+
+	1.	Zclient structure
+*)
+
+local
+    val my_ip = Test_Addresses.crafty_ip
+    val ip_over_eth = 2ux800
+    val arp_over_eth = 2ux806
+    val udp_over_ip = 1ux11
+    val zephyr_hm_port = 2u2104
+    val zephyr_srv_port = 2u2103
+    val zephyr_srv_ip = 4ux8002de08
+    val my_realm = "CS.CMU.EDU"
+    val do_prints=false
+	
+    structure B = Fox_Basis
+    structure Dev = BuildEthDev
+	(structure B = B
+    val protocol_numbers = [ip_over_eth, arp_over_eth]
+    val high_priority_filter = false
+    val do_prints = false)
+	     
+    structure Stack = BuildUdp (structure Device    = Dev.EthDev
+				structure B = B
+				val ip_over_eth     = ip_over_eth 
+				val udp_over_ip     = udp_over_ip
+				val use_arp         = true
+				val do_prints       = do_prints)
+	
+    structure Kerberos=BuildKerberos(structure B=Fox_Basis
+				     val do_prints=do_prints
+				     structure Udp_Stack=Stack)
+	
+    structure Zephyr_Extern = Zephyr_Extern(structure B = B
+					    val do_prints = true)
+    structure Zephyr_Lower =
+	Zephyr_Lower(structure Ip = Stack.Ip
+		     structure Udp = Stack.Udp
+		     structure Z = Zephyr_Extern
+		     structure B = B
+		     val udp_over_ip = udp_over_ip
+		     val zephyr_hm_port = zephyr_hm_port
+		     val zephyr_srv_port = zephyr_srv_port
+		     val zephyr_srv_ip = zephyr_srv_ip
+		     val my_ip = my_ip
+		     val do_prints = do_prints)
+	
+    structure Zephyr =
+	Zephyr(structure B = B
+	       structure Z = Zephyr_Lower
+	       val my_ip = my_ip
+	       val do_prints = do_prints)
+	
+    structure Zephyr_Client =
+	Zephyr_Client(structure K = Kerberos
+		      structure Z = Zephyr
+		      structure B = B
+		      val default_realm = my_realm
+		      val do_prints = do_prints)
+	
+    fun read_password () =
+	let fun remove_trailing_newline s=
+	    substring (s, 0, (size s) - 1)
+	    val in_stream = std_in
+	in
+	    System.Unsafe.CInterface.system "/bin/stty -echo";
+	    Fox_Basis.V.print "Password: ";
+	    (remove_trailing_newline (input_line in_stream))
+	    before
+	    (Fox_Basis.V.print "\n";
+       System.Unsafe.CInterface.system "/bin/stty echo")
+	end
+    
+in     
+    structure Zclient =
+	struct 
+	    exception Error
+	    
+	    structure Z = Zephyr_Client;
+	    structure K = Kerberos
+
+	    fun some_or_none (SOME x ) = x
+	      | some_or_none NONE = raise Error
+		
+	    fun authenticate_as kerb_id =
+		(K.get_ticket_granting_credential
+		 read_password (K.Principal {name_p=kerb_id,instance_p="",
+					     realm_p=my_realm}) ;
+		 ())
+		
+	    val null_handler = (fn _ => ())
+	    val zuser = ref (NONE:Zephyr_Client.zuser option)
+
+	    fun handler (Z.Message {auth,class,instance,recipient,
+				    sender,zsig,message,...}) =
+		let
+		    val msg =
+			"\n--------------- Message ----------------\n" ^
+			"From: " ^ (Z.zid_to_string sender) ^ "\n" ^
+			"  To: " ^ (Z.zid_to_string recipient) ^  
+			"\n----------------------------------------\n" ^
+			message ^
+			"\n----------------------------------------\n" ^
+			zsig ^
+			"\n----------------------------------------\n" 
+		in
+		    print msg
+		end
+	      | handler _ = ()
+		
+	    fun zwrite (to:string) (message:string)  =
+		let
+		    val zuser =
+			case (!zuser) of
+			    NONE => ((B.V.print "Please zstart.\n");
+				     raise Error)
+			  | SOME z => z
+		    val me = Z.zuser_to_zid zuser
+		    val message = (Z.Message
+				   {kind=Z.ACKED,
+				    auth=true,
+				    class="MESSAGE",
+				    instance="PERSONAL",
+				    sender=me,
+				    recipient=(Z.Zid{name=to,realm=NONE}),
+				    zsig="Via the Fox Net",
+				    message=message})
+			
+		    val ack = Z.send zuser message
+		in
+		    ack
+		end
+	    
+	    fun zstart zid_string auth subs =
+		let
+		    val z = Z.zlogin {me=Z.string_to_zid zid_string,
+				      auth=auth}
+		in
+		    if auth then
+			(Z.subscribe z
+			 {default_subs=true,
+			  subs=(subs:{class:string,instance:string,
+				      recipient:string} list)};
+			 Z.receive z handler)
+		    else
+			();
+			zuser := SOME z
+		end
+	end (* Zclient *)
+end

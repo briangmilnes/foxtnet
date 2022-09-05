@@ -1,0 +1,171 @@
+(*
+
+	 FoxNet: The Fox Project's Communication Protocol Implementation Effort
+	 Sidd Puri (puri@cs.cmu.edu)
+	 Edoardo Biagioni (Edoardo.Biagioni@cs.cmu.edu)
+	 Ken Cline (Kenneth.Cline@cs.cmu.edu)
+	 Fox Project
+	 School of Computer Science
+	 Carnegie Mellon University
+	 Pittsburgh, Pa 15213-3891
+
+		i.	Abstract
+
+        telnetclient.str: telnet client program.
+
+		ii.	Table of Contents
+
+	i.	Abstract
+	ii.	Table of Contents
+	iii.	RCS Log
+	1.	structure Telnet_Stack
+	2.	debugging-level variables
+	3.	standard TCP/IP stack
+	4.	Telnet sub-structures and parameters
+	5.	Telnet structures
+	6.	Other parameters to Telnet_Client
+	7.	structure Telnet_Client
+
+		iii.	RCS Log
+	
+$Log: telnetclient.str,v $
+Revision 1.1  1996/07/05  17:46:02  esb
+Initial revision
+
+
+		1.	structure Telnet_Stack
+*)
+
+structure Telnet_Stack =
+ struct
+  structure B = Fox_Basis
+
+(*
+		2.	debugging-level variables
+*)
+
+  val dev_debug = ref 0
+  val eth_debug = ref 0
+  val arp_debug = ref 0
+  val ip_debug = ref 0
+  val udp_debug = ref 0
+  val tcp_debug = ref 0
+  val telnet_debug = ref 0
+
+(*
+		3.	standard TCP/IP stack
+*)
+
+  local
+   structure Base = Build_Eth_Dev (structure B = Fox_Basis
+				   val debug_level = NONE)
+
+   structure Init = Initialize (structure Device = Base.Raw
+				structure V = Fox_Basis.V
+(* use "val hostname_to_ip = fn _ => NONE" to force the use of system files
+   to figure out the local IP number. *)
+				val hostname_to_ip =
+				       Hostname_Ip.hostname_to_ip 
+				val interface_number = 0)
+
+   structure Stack = Build_Dns (structure Device = Base.Dev
+				structure B = Fox_Basis
+				val tcp_window_size = 4096
+				val tcp_user_timeout = Word32.fromInt 240000
+				val eth_debug_level = NONE
+				val arp_debug_level = NONE
+				val ip_debug_level = NONE
+				val tcp_debug_level = SOME tcp_debug
+				val udp_debug_level = NONE
+				val dns_debug_level = NONE)
+
+   val transport_setup = Stack.Tcp.Transport_Setup.Setup (Init.Ip.setup ())
+   val dns_setup = Init.Dns.setup transport_setup
+
+   exception Hostname_Lookup of string
+
+(*
+		4.	Telnet sub-structures and parameters
+*)
+
+   structure Data = Telnet_Data (structure B = B
+				 val debug_level = SOME telnet_debug)
+   structure IO = Telnet_Io (structure Data = Data
+			     structure In = Stack.Tcp.Incoming
+			     structure Out = Stack.Tcp.Outgoing
+			     val suppress_lf_after_cr = false
+			     structure B = B
+			     val debug_level = SOME telnet_debug)
+
+   fun send_urgent (Stack.Tcp.C {extension, ...}, lower_outgoing) =
+        let val Stack.Tcp.Tcp_Connection_Extension {urgent_send, ...} =
+	               extension
+	in urgent_send lower_outgoing
+	end
+
+   fun parse_urgent (_, Stack.Tcp.Tcp_Status.Urgent_Data data) = SOME data
+     | parse_urgent _ = NONE
+
+   fun lower_flush _ = ()
+
+  in
+
+(*
+		5.	Telnet structures
+*)
+
+   structure Telnet_Protocol =
+       Telnet_Protocol (structure IO = IO
+			structure Lower = Stack.Tcp
+			val send_urgent = send_urgent
+			val parse_urgent = parse_urgent
+			val lower_flush = lower_flush
+			structure B = B
+			val debug_level = SOME telnet_debug)
+
+   structure Telnet = Telnet (structure Lower = Telnet_Protocol
+			      structure B = B
+			      val debug_level = SOME telnet_debug)
+
+(*
+		6.	Other parameters to Telnet_Client
+*)
+
+   val setup = transport_setup
+
+   fun lookup (name, port) =
+        case Stack.Dns_Lookup.lookup dns_setup name of
+	   SOME peer => (Stack.Tcp.Transport_Address.Remote_Specified
+		           {peer = peer, remote_port = Word16.fromInt port})
+	 | NONE => raise (Hostname_Lookup name)
+
+   val inverse_lookup = Stack.Dns_Lookup.inverse_lookup dns_setup
+
+   fun connection_closing Stack.Tcp.Tcp_Status.Connection_Closing = true
+     | connection_closing Stack.Tcp.Tcp_Status.Connection_Reset = true
+     | connection_closing _ = false
+
+   structure Pty = Telnet_Pty (structure B = Fox_Basis
+			       val debug_level = SOME telnet_debug)
+
+   structure Term = Term		(* global, defined at top level. *)
+
+  end
+ end
+
+(*
+		7.	structure Telnet_Client
+*)
+
+structure Telnet_Client =
+    Telnet_Client (structure Term = Telnet_Stack.Term
+		   structure Pty = Telnet_Stack.Pty
+		   structure Telnet = Telnet_Stack.Telnet
+		   val setup = Telnet_Stack.setup
+		   val lookup = Telnet_Stack.lookup
+		   val suspend_character = #"\029" (* ^] *)
+		   (* val suspend_character = #"@" *)
+		   val connection_closing = Telnet_Stack.connection_closing
+		   structure B = Fox_Basis
+		   val debug_level = SOME Telnet_Stack.telnet_debug)
+

@@ -1,0 +1,189 @@
+(*
+
+	Fox Net: The Fox Project's Communication Protocol Implementation Effort
+	Edoardo Biagioni (Edoardo.Biagioni@cs.cmu.edu)
+	Ken Cline (Kenneth.Cline@cs.cmu.edu)
+	Brian Milnes (Brian.Milnes@cs.cmu.edu)
+        Nick Haines (Nick.Haines@cs.cmu.edu)
+	Fox Project
+	School of Computer Science
+	Carnegie Mellon University
+	Pittsburgh, Pa 15213-3891
+
+		i.	Abstract
+
+	Fox Net Compilation Manager file.
+
+
+		ii.	Table of Contents
+
+	i.	Abstract
+	ii.	Table of Contents
+	iii.	usage
+	iv.	RCS Log
+	1.	exported structures
+
+		iii.	usage
+
+	to build under SML/NJ 107.7 or subsequent versions:
+	   fun m _ = CM.make' (CM.cmfile "foxnet.cm");
+
+		iv.	RCS Log
+	
+$Log: foxnet.cm,v $
+Revision 1.17  1997/03/18  11:01:45  esb
+removed dnsproto.tst
+
+Revision 1.16  97/02/06  22:24:55  esb
+replaced alpha_osf1 with osf1
+
+Revision 1.15  1997/02/06  22:09:20  cline
+*** empty log message ***
+
+Revision 1.14  96/01/15  18:00:49  cline
+removed FoxWord
+
+Revision 1.13  1995/09/14  21:13:35  cline
+added tcp
+
+Revision 1.12  1995/08/29  16:23:09  esb
+revised ICMP
+
+Revision 1.11  1995/08/24  00:54:57  esb
+added ipicmp.fun
+
+Revision 1.10  1995/08/08  22:49:15  esb
+added ICMP_PROTOCOL to the export list
+
+Revision 1.9  1995/08/08  20:27:51  esb
+removed proto.alt
+
+Revision 1.8  1995/08/08  18:26:33  cline
+added tcp and icmp
+
+Revision 1.7  1995/07/04  00:10:30  esb
+replaced BUILDIP by IP_STACK.
+
+Revision 1.6  1995/06/29  18:22:40  esb
+removed VECTOR_SEQ and VECTOR_SEQUENCE.
+
+Revision 1.5  1995/06/28  15:00:30  cline
+added udp
+
+Revision 1.4  1995/06/26  17:42:01  cline
+added udp
+
+Revision 1.3  1995/06/26  17:30:52  esb
+exported IP functors.
+
+Revision 1.2  1995/06/23  19:58:30  esb
+added more IP files.
+
+Revision 1.1  1995/06/20  16:19:04  esb
+Initial revision
+
+
+		1.	exported structures
+*)
+
+Group
+is
+
+  foxbasis.cm
+
+prot/proto/prototype.sig
+prot/proto/protoexn.sig
+prot/proto/proto.sig
+prot/proto/rpc.sig
+prot/proto/protoextern.fun
+prot/dev/dev.sig
+prot/dev/wire.sig
+prot/dev/wire.fun
+prot/arp/arp.sig
+prot/eth/eth.sig
+prot/stack/network.sig
+prot/stack/transport.sig
+prot/stack/transport.fun
+prot/tcp/tcplog.sig
+prot/tcp/tcp.sig
+prot/udp/udp.sig
+prot/dev/sim.fun
+prot/dev/makedev.fun
+prot/dev/buildethdev.sig
+prot/dev/osf1/packetfilter.sig
+prot/dev/osf1/packetfilter.fun
+prot/dev/osf1/ethdev.fun
+prot/dev/osf1/buildethdev.fun
+prot/proto/conn.fun
+prot/eth/ethheader.fun
+prot/eth/eth.fun
+prot/arp/arpheader.fun
+prot/arp/arp.fun
+prot/arp/arpeth.fun
+prot/stack/testaddress.str
+prot/dev/devmeter.fun
+prot/dev/buildsim.sig
+prot/dev/buildsim.fun
+prot/eth/buildeth.sig
+prot/eth/buildeth.fun
+prot/block/length.fun
+prot/block/minlength.fun
+prot/block/constant.fun
+prot/block/packetvalue.fun
+prot/block/sendreceive.fun
+prot/block/void.fun
+prot/block/multiplex.fun
+prot/block/address.fun
+prot/block/ethall.fun
+prot/block/arpall.fun
+prot/stack/segment.fun
+prot/stack/stream.fun
+prot/tcp/tcplog.fun
+prot/tcp/tcptcb.sig
+prot/tcp/tcptcb.fun
+prot/tcp/tcpresend.sig
+prot/tcp/tcpresend.fun
+prot/tcp/tcpstate.sig
+prot/tcp/tcpstate.fun
+prot/tcp/tcpsend.sig
+prot/tcp/tcpsend.fun
+prot/tcp/tcpreceive.sig
+prot/tcp/tcpreceive.fun
+prot/tcp/tcpheader.sig
+prot/tcp/tcpheader.fun
+prot/tcp/tcpmain.fun
+prot/ip/hostid.str
+prot/ip/ipmux.sig
+prot/ip/ipmux.fun
+prot/ip/ipoption.sig
+prot/ip/ipoption.fun
+prot/ip/ipheader.fun
+prot/ip/ipfrag.sig
+prot/ip/ipfrag.fun
+prot/ip/iproute.sig
+prot/ip/iproute.fun
+prot/ip/iploop.fun
+prot/ip/pseudoip.fun
+prot/ip/icmpheader.sig
+prot/ip/icmpheader.fun
+prot/ip/ip.sig
+prot/ip/ip.fun
+prot/ip/buildip.sig
+prot/ip/buildip.fun
+prot/udp/udpheader.fun
+prot/udp/udp.fun
+prot/udp/buildudp.sig
+prot/udp/buildudp.fun
+prot/tcp/buildtcp.sig
+prot/tcp/buildtcp.fun
+prot/dns/dns.sig
+prot/dns/dnsmessage.fun
+prot/dns/dnsproto.sig
+prot/dns/dnsproto.fun
+prot/dns/dnscache.fun
+prot/dns/dnslookup.sig
+prot/dns/dnslookup.fun
+prot/dns/builddns.sig
+prot/dns/builddns.fun
+prot/init/osf1init.fun
+prot/init/hostnameip.str

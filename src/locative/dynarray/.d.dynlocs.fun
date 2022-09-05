@@ -1,0 +1,2 @@
+Decl 2
+(b f%Dyn_Locs (l (h (d (a s%Byte1 (i f%Locative (h (d (a s%Dyn_Array (g s%Dyn_Array) 0) (a s%Extern (g s%Byte_Extern.Byte1) 0))) F) 0) (a s%Byte2 (i f%Locative (h (d (a s%Dyn_Array (g s%Dyn_Array) 0) (a s%Extern (g s%Byte_Extern.Byte2) 0))) F) 0) (a s%Byte4 (i f%Locative (h (d (a s%Dyn_Array (g s%Dyn_Array) 0) (a s%Extern (g s%Byte_Extern.Byte4) 0))) F) 0))) (g s$DYN_LOCS) 0 (h (d (a s%Dyn_Array (g s$DYNAMIC_BYTE_ARRAY) 0) (a s%Byte_Extern (g s$BYTE_EXTERN) 0) (f s%Dyn_Array s%Byte_Extern)))))

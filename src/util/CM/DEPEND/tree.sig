@@ -1,0 +1,2 @@
+Decl 4
+s$ROOTED_LABELED_DATA_TREE.sq;-;

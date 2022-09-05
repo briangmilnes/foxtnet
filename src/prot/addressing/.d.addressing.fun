@@ -1,0 +1,2 @@
+Decl 2
+(b f%Addressing (l (h (d (a s%Trace (i f%Trace (h (a s%V (g s%B.V) 0)) F) 0) (f s%Trace) (c (d (f s%Link_Parser) (e s%Addressing_Types) (f s%Trace s%B)) (d (f s%SW s%FoxWord32 s%Link_Parser s%Os_Addressing s%B) (a s%AT (g s%Addressing_Types) 0))))) (g s$ADDRESSING) 0 (h (d (a s%B (g s$FOX_BASIS) 0) (a s%Addressing_Types (g s$ADDRESSING_TYPES) 0) (a s%Os_Addressing (g s$OS_ADDRESSING) 0) (a s%Link_Parser (g s$LINK_PARSER) 0) (f s%Os_Addressing s%Addressing_Types)))))

@@ -1,0 +1,177 @@
+(*
+
+	FoxNet: The Fox Project's Communication Protocol Implementation Effort
+	Edoardo Biagioni (Edoardo.Biagioni@cs.cmu.edu)
+	Brian Milnes (Brian.Milnes@cs.cmu.edu)
+	Ken Cline (Kenneth.Cline@cs.cmu.edu)
+        Nick Haines (Nick.Haines@cs.cmu.edu)
+	Fox Project
+	School of Computer Science
+	Carnegie Mellon University
+	Pittsburgh, Pa 15213-3891
+
+		i.	Abstract
+
+	Some useful parsing utilities.
+
+		ii.	Table of Contents
+
+	i.	Abstract
+	ii.	Table of Contents
+	iii.	RCS Log
+	1.	structure Parsing_Utils
+
+		iii.	RCS Log
+	
+$Log: utils.str,v $
+Revision 1.5  1995/06/20  17:38:42  esb
+minor fix.
+
+Revision 1.4  1995/02/13  23:02:08  esb
+added PARSING_UTILS signature, ported to 1.07.
+
+Revision 1.3  1995/02/04  21:47:17  robby
+updated to 107
+
+Revision 1.2  1994/11/07  21:39:25  cline
+use V.String
+
+Revision 1.1  1994/10/21  14:01:41  milnes
+Initial revision
+
+
+		1.	structure Parsing_Utils
+*)
+
+functor Parsing_Utils (structure V: VENDOR
+		       structure Parser: PARSER): PARSING_UTILS = 
+ struct 
+ (* Predicates *)
+  local 
+(*
+  open V.String
+  open Parser
+*)
+   val -- = Parser.--
+   infix 2 --
+   val ## = Parser.##
+   infix 2 ##
+   val && = Parser.&&
+   infixr 3 &&
+   val wth = Parser.wth
+   infix 2 wth
+   val suchthat = Parser.suchthat
+   infix 2 suchthat
+   val return = Parser.return
+   infix 2 return
+   val guard = Parser.guard
+   infix 2 guard
+   val || = Parser.||
+   infixr 1 ||
+
+   val literal = Parser.literal
+   val any = Parser.any
+   val repeat = Parser.repeat
+   val repeat1 = Parser.repeat1
+   val first = Parser.first
+   val second = Parser.second
+   val middle = Parser.middle
+   val opt = Parser.opt
+   val fail = Parser.fail
+   val succeed = Parser.succeed
+   val !! = Parser.!!
+  in
+   fun is_alphabetic c =
+        let val ordc = V.Char.ord c 
+	in (V.Char.ord #"A") <= ordc andalso ordc <= (V.Char.ord #"Z") orelse
+	   (V.Char.ord #"a") <= ordc andalso ordc <= (V.Char.ord #"z")
+	end
+  
+   fun is_digit c = V.Char.<= (#"0",c) andalso V.Char.<= (c,#"9")
+  
+  (* Predicate Combinators *)
+  
+   fun cor(p1,p2) = (fn i => ((p1 i) orelse (p2 i)))
+   fun cand(p1,p2) = (fn i => ((p1 i) andalso (p2 i)))
+   fun cnot p1 = (fn i => (not (p1 i)))
+   infixr 4 cor 
+   infixr 4 cand 
+  
+  (* Type translations *)
+  
+   fun list1 a = [a]
+   fun list2 (a,b) = (a :: b)
+   fun list3 (a,(b,c)) = [a,b,c]
+   fun list4 (a,(b,(c,d))) = [a,b,c,d]
+   fun list5 (a,(b,(c,(d,e)))) = [a,b,c,d,e]
+   fun list6 (a,(b,(c,(d,(e,f))))) = [a,b,c,d,e,f]
+   fun list7 (a,(b,(c,(d,(e,(f,g)))))) = [a,b,c,d,e,f,g]
+   fun list8 (a,(b,(c,(d,(e,(f,(g,h))))))) = [a,b,c,d,e,f,g,h]
+   fun list9 (a,(b,(c,(d,(e,(f,(g,(h,i)))))))) = [a,b,c,d,e,f,g,h,i]
+
+   fun digit_to_int d = V.Char.ord d - V.Char.ord #"0"
+
+   fun compose_number (digit, prev) = 10 * prev + digit_to_int digit
+
+   fun pint_to_int digits = V.List.revfold compose_number digits 0
+
+   fun sint_to_int sint = 
+        let fun sint_to_int_aux [] =  0
+	      | sint_to_int_aux (#"~" :: digits) = 
+		 ~1 *
+		 (V.List.revfold (fn (d,n) =>
+				  10 * n + (digit_to_int d)) digits 0)
+	      | sint_to_int_aux digits =
+		 (V.List.revfold (fn (d,n) => 10 * n + (digit_to_int d)) digits 0)
+	in sint_to_int_aux sint
+	end  (* local *)
+
+   (* Patterns *)
+  
+   type ('a, 't, 'r) P = ('a, 't, 'r) Parser.P
+
+   val bt = literal #" " || literal #"\t"
+   val btn = literal #" " || literal #"\t" || literal #"\n"
+   val btspace = (repeat bt)
+   val btnspace = (repeat btn)
+   val whitespace = btnspace
+  
+   fun -& p = second btspace p
+   fun &-&(l,r) = (l && btspace && r) wth (fn (f,(_,t)) => (f,t))
+   infixr 3 &-&
+   
+   val digit = any suchthat is_digit
+   val literals = Parser.string
+   val string = (middle (literal #"\"") 
+			 (repeat (any suchthat (fn v =>
+						not (v =  #"\""))))
+						     (literal #"\""))
+  
+   val id = ((any suchthat is_alphabetic) &&
+	     (repeat1 (any suchthat (is_alphabetic cor is_digit)))) 
+	    wth op::
+
+   val pint = (repeat1 digit)
+   val sint = ((opt (literal #"~")) && (repeat1 digit))
+                wth (fn (SOME s, digits) => (s :: digits)
+	              | (NONE, digits) => digits)
+ 
+   val uptoeol = first (repeat (any suchthat (fn c => c <> #"\n")))
+                       (opt (literal #"\n"))
+   val semi_comment  = ((literal #";") && uptoeol)
+   val sharp_comment = ((literal #"#") && uptoeol)
+
+   val word = (repeat (any suchthat (fn c => (not (c = #" "
+						   orelse c = #"\t")))))
+
+   (* Semantic Checks *)
+
+   type T = Parser.Position.T
+
+   (* An infix semantic test and translate idiom. *)
+   infix 2 sem
+   fun p sem t = (!! p) -- (fn vp =>
+			     case t vp of SOME v => succeed v | NONE => fail)
+
+  end (*local*)
+ end (*struct*)

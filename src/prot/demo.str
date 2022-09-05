@@ -1,0 +1,451 @@
+(*
+
+	FoxNet: The Fox Project's Communication Protocol Implementation Effort
+	Edo Biagioni (esb@cs.cmu.edu)
+	Ken Cline (Ken_Cline@cs.cmu.edu)
+	Brian Milnes (milnes@cs.cmu.edu)
+	Fox Project
+	School of Computer Science
+	Carnegie Mellon University
+	Pittsburgh, Pa 15139-3891
+
+	i.	Abstract
+
+	demo.fun: A functor for showing that the protocols work.
+
+---------------------------------------------------------------------
+
+	ii.	Table of Contents
+
+	i.	Abstract
+	ii.	Table of Contents
+	iii.	RCS Log
+	1.	structure Sort_String
+	2.	structure Random_Bool
+	3.	signature DEMO
+	4.	functor Demo
+	5.	standard stacks
+	6.	non-standard stacks
+	7.	structures Ip_Demo and Eth_Demo
+
+	iii.	RCS Log
+
+$Log: demo.str,v $
+Revision 1.7  1995/03/10  03:49:57  esb
+adapted to new vendor.sig.
+
+Revision 1.6  1995/02/04  20:39:19  robby
+updated to 107
+
+Revision 1.5  1994/11/07  21:34:56  cline
+use V.Print
+
+Revision 1.4  1994/11/01  15:57:52  cline
+removed FoxWord for demo (temporary)
+
+Revision 1.3  1994/10/31  18:59:05  esb
+added the game and sort demos
+
+Revision 1.2  1994/10/27  20:28:09  cline
+added SML/NJ 105 compatibility
+
+Revision 1.1  1994/10/26  13:31:43  esb
+Initial revision
+
+
+	1.	structure Sort_String
+*)
+
+structure Sort_String =
+ struct
+  local
+
+   val op<<< = Char.<
+   infix <<<
+
+   fun bubble_step (c, []) = ([c], true)
+     | bubble_step (c, head :: rest) =
+        let val (first, second, inorder) =
+	           if head <<< c then (head, c, false)
+		   else                (c, head, true)
+	    val (sorted, inorder_rest) = bubble_step (second, rest)
+	 in (first :: sorted, inorder andalso inorder_rest)
+	 end
+
+  in (* local *)
+
+   fun bubble_pass string =
+	case Fox_Basis.V.String.explode string of
+	   [] => ("", true)
+	 | head :: rest =>
+	    let val (ordered, done) = bubble_step (head, rest)
+	    in (Fox_Basis.V.String.implode ordered, done)
+	    end
+
+   fun bubble_sort string =
+        let fun loop_until_sorted (string, true) = string
+	      | loop_until_sorted (string, false) =
+		 (Fox_Basis.V.Print.print (string ^ "\n");
+		  loop_until_sorted (bubble_pass string))
+	in loop_until_sorted (bubble_pass string)
+	end
+
+  end (* local *)
+ end
+
+(*
+	2.	structure Random_Bool
+
+	The code is taken from the SML/NJ standard library, and
+	adapted to return bools instead of reals.
+*)
+
+structure Random_Bool =
+ struct
+  local
+   val seed = ref (Fox_Basis.Time.time_to_real (Fox_Basis.Time.time_of_day ()))
+
+      (*real number version for systems with 46-bit mantissas*)
+   val a = 16807.0  and  m = 2147483647.0
+
+   fun new_random () =
+        let val t = a * (! seed)
+	    val new_seed = t - m * real (floor (t / m))  
+	in seed := new_seed;
+	   new_seed
+	end
+
+    fun norm r = r / m
+
+  in (* local *)
+
+   fun next () = norm (new_random ()) >= 0.5
+
+  end (* local *)
+ end
+
+(*
+	3.	signature DEMO
+*)
+
+signature DEMO =
+ sig
+  val external: string * int -> unit
+  val active: string -> unit
+  val passive: unit -> unit
+  val serve_game: int -> unit
+  val play: string -> unit
+ end (* sig *)
+
+(*
+	4.	functor Demo
+*)
+
+functor Demo (structure Tcp: TCP_PROTOCOL
+	       sharing type Tcp.port = FoxWord16.word
+		   and type Tcp.lower_layer_address = FoxWord32.word
+		   and type Tcp.incoming = Tcp.outgoing =
+		            Fox_Basis.Dyn_Array.T): DEMO =
+ struct
+  fun local_print s = Fox_Basis.V.Print.print ("demo.fun: " ^ s ^ "\n")
+
+  fun active_address (name, port) =
+       case Test_Addresses.name_ip name of
+	  NONE =>
+	   (local_print ("name " ^ name ^
+			 " not in test_addresses, unable to proceed");
+	    NONE)
+	| SOME ip =>
+	   SOME (Tcp.Remote_Specified {peer = ip, remote_port = port})
+
+  fun passive_address port =
+       SOME (Tcp.Local_Specified {local_port = port})
+
+  fun array_to_string array =        
+       let fun array_char index =
+                (Fox_Basis.V.Char.chr (ByteArray.sub (array, index))) 
+		handle _ => #"?"
+           fun convert index = 
+	     if index >= ByteArray.length array then []
+	       else array_char index :: convert (index + 1)
+       in implode (convert 0)
+       end
+
+  val data_to_string = array_to_string o Fox_Basis.Dyn_Array.read
+
+  fun print_array data =
+       local_print ("received: " ^ data_to_string data)
+
+  fun fill_array (array, string) =
+       let fun fill_loop (index, []) = ()
+	     | fill_loop (index, char :: rest) =
+                if index >= Fox_Basis.Dyn_Array.size array then ()
+	        else
+	         (Fox_Basis.Dyn_Array.update1 
+		  (array, index, FoxWord8.intToWord
+		                 (Fox_Basis.V.Char.ord char));
+		  fill_loop (index + 1, rest))
+       in fill_loop (0, Fox_Basis.V.String.explode string)
+       end
+
+  fun receive_data queue data =
+       (print_array data;
+        Fox_Basis.Pipe.enqueue (queue, ()))
+
+  fun status_handler status =
+       local_print ("status: " ^ Tcp.makestring_status status)
+
+  fun receive queue conn = (receive_data queue, status_handler)
+
+  fun external (name, count) =
+       case active_address (name, FoxWord16.intToWord 13) of
+	  NONE => ()
+	| SOME address =>
+	   (Fox_Basis.Scheduler.reset ();
+	    Tcp.initialize ();
+	    local_print "initialized";
+	    let fun test_one () =
+                     (let val queue = Fox_Basis.Pipe.new NONE
+			  val conn = Tcp.connect (address,
+						  Tcp.Handler (receive queue))
+		      in Fox_Basis.Pipe.dequeue queue;
+		         Tcp.close conn
+		      end)
+		       handle x => local_print ("exception " ^
+						System.exn_name x)
+                fun testn 0 = ()
+	          | testn n = (test_one (); testn (n - 1))
+            in testn count
+            end;
+            Tcp.finalize ();
+            local_print "finalized")
+
+  fun sort_receive (conn, queue) data =
+       let val string = data_to_string data
+	   val (sorted, done) = Sort_String.bubble_pass string
+       in if done then
+	   (local_print ("string sorted, result is " ^ sorted);
+	    Fox_Basis.Pipe.enqueue (queue, conn))
+	  else
+	   let val (buffer, send) =
+	             Tcp.allocate_send (conn, Fox_Basis.V.String.length sorted)
+	   in fill_array (buffer, sorted);
+	      local_print ("sending " ^ sorted);
+	      send ()
+	   end
+       end
+
+  fun sort_status (conn, queue) Tcp.Connection_Closing =
+       (local_print ("status: " ^
+		     Tcp.makestring_status Tcp.Connection_Closing);
+	Fox_Basis.Pipe.enqueue (queue, conn))
+    | sort_status _ status =
+       local_print ("status: " ^ Tcp.makestring_status status)
+
+  fun passive () =
+       case passive_address (FoxWord16.intToWord 12345) of
+	  NONE => ()
+	| SOME address =>
+	   let val _ = Fox_Basis.Scheduler.reset ()
+	       val _ = Tcp.initialize ()
+	       val queue = Fox_Basis.Pipe.new NONE
+	       fun receive conn = (sort_receive (conn, queue),
+				   sort_status (conn, queue))
+           in local_print "starting passive";
+              Tcp.start_passive (address, Tcp.Handler receive, SOME 1);
+              local_print "started passive";
+              Tcp.close (Fox_Basis.Pipe.dequeue queue);
+	      local_print "closed";
+	      Tcp.finalize ();
+              local_print "done";
+	      Fox_Basis.Scheduler.sleep 1000
+           end
+
+  fun active name =
+       case active_address (name, FoxWord16.intToWord 12345) of
+	  NONE => ()
+	| SOME address =>
+	   let val _ = Fox_Basis.V.Print.print "enter a string to be sorted > "
+	       val raw_input = (IO.input_line IO.std_in) handle _ => ""
+		(* get rid of the end-of-line character *)
+	       val input_string = substring (raw_input, 0,
+					     Fox_Basis.V.String.length raw_input - 1)
+	       val _ = Fox_Basis.Scheduler.reset ()
+	       val _ = Tcp.initialize ()
+               val queue = Fox_Basis.Pipe.new NONE
+	       fun receive conn = (sort_receive (conn, queue),
+				   sort_status (conn, queue))
+	       val _ = local_print "connecting"
+	       val conn = Tcp.connect (address, Tcp.Handler receive)
+	       val _ = local_print "connected";
+	       val (buffer, send) =
+	             Tcp.allocate_send (conn, Fox_Basis.V.String.length input_string)
+	   in fill_array (buffer, input_string);
+	      local_print ("sending " ^ input_string);
+	      send ();
+              Fox_Basis.Pipe.dequeue queue;
+	      Tcp.close conn;
+	      local_print "closed";
+	      Tcp.finalize ();
+              local_print "done";
+	      Fox_Basis.Scheduler.sleep 1000
+           end
+
+  fun play_serve (conn, queue, state) data =
+       let val move = FoxWord8.wordToInt (Fox_Basis.Dyn_Array.sub1 (data, 0))
+	   val first_result = ! state - move
+       in if first_result = 0 then
+	   (local_print "you win!";
+	    Fox_Basis.Pipe.enqueue (queue, conn))
+          else if first_result < 0 then
+	   (local_print ("illegal move, only " ^
+			 Fox_Basis.V.Integer.makestring (! state) ^
+			 " sticks available, aborting game");
+	    Fox_Basis.Pipe.enqueue (queue, conn))
+	  else if first_result < 3 then
+	   (local_print ("I take " ^ 
+			 Fox_Basis.V.Integer.makestring first_result ^
+			 " and I win!");
+	    Fox_Basis.Pipe.enqueue (queue, conn))
+	  else
+	   let val my_move = if Random_Bool.next () then 1 else 2
+	       val new_state = first_result - my_move
+	       val (buffer, send) =
+	             Tcp.allocate_send (conn, 1)
+	       val you_string = if move <> 0 then
+		                 "You took " ^
+				 Fox_Basis.V.Integer.makestring move ^ ", "
+				else "            "
+	       val i_string = "I take " ^
+			      Fox_Basis.V.Integer.makestring my_move ^ ", "
+	       val final_string = "leaving " ^
+			          Fox_Basis.V.Integer.makestring new_state
+	   in state := new_state;
+	      Fox_Basis.Dyn_Array.update1 (buffer, 0,
+					   FoxWord8.intToWord new_state);
+	      local_print (you_string ^ i_string ^ final_string);
+	      send ()
+	   end
+       end
+
+  exception Bad_Input
+  fun odd_even_enter 0 =
+       (local_print "too many wrong entries, aborting";
+	raise Bad_Input)
+    | odd_even_enter max_count =
+       (Fox_Basis.V.Print.print "enter 1 or 2 > ";
+	let val raw_input = (IO.input_line IO.std_in) handle _ => ""
+	    fun find_input [] = NONE
+	      | find_input (#"1" :: rest) = SOME 1
+	      | find_input (#"2" :: rest) = SOME 2
+	      | find_input (head :: rest) = find_input rest
+	in case find_input (Fox_Basis.V.String.explode raw_input) of
+	      NONE =>
+	       (local_print "invalid input, neither 1 nor 2 found";
+		odd_even_enter (max_count - 1))
+	    | SOME n => n
+	end)
+
+  fun play_active (conn, queue) data =
+       (let val state = FoxWord8.wordToInt (Fox_Basis.Dyn_Array.sub1 (data, 0))
+	    val _ = local_print ("there are now " ^
+				 Fox_Basis.V.Integer.makestring state ^
+				 " sticks left")
+	    val input = odd_even_enter 5
+	    val (buffer, send) = Tcp.allocate_send (conn, 1)
+        in Fox_Basis.Dyn_Array.update1 (buffer, 0,
+				        FoxWord8.intToWord input);
+	   send ()
+        end)
+	 handle _ => 
+	         (local_print "bad input, closing connection";
+		  Fox_Basis.Pipe.enqueue (queue, conn))
+
+  fun serve_game initial_count =
+       if initial_count > 100 then
+	local_print "error: argument to serve_game should be less than 100"
+       else
+	case passive_address (FoxWord16.intToWord 12345) of
+	   NONE => ()
+	 | SOME address =>
+	    let val _ = Fox_Basis.Scheduler.reset ()
+	        val _ = Tcp.initialize ()
+	        val queue = Fox_Basis.Pipe.new NONE
+		val state = ref initial_count
+	        fun receive conn =
+		     let val data = play_serve (conn, queue, state)
+		         val status = sort_status (conn, queue)
+		         val buffer = Fox_Basis.Dyn_Array.new 1
+		     in Fox_Basis.Dyn_Array.update1 (buffer, 0, FoxWord8.intToWord 0);
+		        data buffer;
+			(data, status)
+		     end
+            in local_print "starting passive";
+               Tcp.start_passive (address, Tcp.Handler receive, SOME 1);
+               local_print "started passive";
+               Tcp.close (Fox_Basis.Pipe.dequeue queue);
+	       local_print "closed";
+	       Tcp.finalize ();
+               local_print "done";
+	       Fox_Basis.Scheduler.sleep 1000
+	    end
+
+  fun play name =
+       case active_address (name, FoxWord16.intToWord 12345) of
+	  NONE => ()
+	| SOME address =>
+	   let (* val initial_input = odd_even_enter 5 *)
+	       val _ = Fox_Basis.Scheduler.reset ()
+	       val _ = Tcp.initialize ()
+               val queue = Fox_Basis.Pipe.new NONE
+	       fun receive conn = (play_active (conn, queue),
+				   sort_status (conn, queue))
+	       val _ = local_print "connecting"
+	       val conn = Tcp.connect (address, Tcp.Handler receive)
+	       val _ = local_print "connected";
+	   in Fox_Basis.Pipe.dequeue queue;
+	      Tcp.close conn;
+	      local_print "closed";
+	      Tcp.finalize ();
+              local_print "done";
+	      Fox_Basis.Scheduler.sleep 1000
+           end
+
+ end (* struct *)
+        
+(*
+	5.	standard stacks
+*)
+
+structure Dev = Dev_Protocol ();
+structure Eth = Eth_Protocol (structure Dev = Dev);
+structure Arp = Arp_Protocol (structure Eth = Eth);
+structure Ip = Ip_Protocol (structure Arp = Arp);
+structure Icmp = Icmp_Protocol (structure Ip = Ip);
+structure Tcp = Tcp_Protocol (structure Lower = Icmp
+			      val checksum = true);
+structure Udp = Udp_Protocol (structure Lower = Icmp
+			      val checksum = true);
+
+(*
+	6.	non-standard stacks
+*)
+
+structure Len = Length_Protocol (structure Arp = Arp);
+(*
+structure Tcpx = Tcp_Protocol (structure Lower = Len
+			       val checksum = false);
+*)
+structure Pseudo_Len = Pseudo_Ip_Protocol (structure Arp = Len);
+
+structure Tcpx = Tcp_Protocol (structure Lower = Pseudo_Len
+			       val checksum = false);
+structure Udpx = Udp_Protocol (structure Lower = Pseudo_Len
+			       val checksum = false);
+
+(*
+	7.	structures Ip_Demo and Eth_Demo
+*)
+
+structure Ip_Demo = Demo (structure Tcp = Tcp);
+structure Eth_Demo = Demo (structure Tcp = Tcpx);

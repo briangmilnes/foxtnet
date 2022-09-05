@@ -1,0 +1,109 @@
+(*---------------------------------------------------------------------------*>
+ *
+ *  telnet.str
+ *  1 / 23 / 95
+ *  Sidd Puri
+ *
+ *  Set up the network and instantiate the Telnet functor over TCP.
+ *
+<*---------------------------------------------------------------------------*)
+
+(* Hostname functor, taken from dnsproto.tst --------------------------------*)
+
+signature HOSTNAME = sig
+  val hostname: string -> string
+end
+
+functor Hostname (
+  structure Dev: DEVICE_PROTOCOL
+  sharing type Dev.Setup.T = string
+) : HOSTNAME = struct
+  exception Hostname_Lookup_Failed
+
+  fun run_session (
+    Dev.S { extension = Dev.Dev_Session_Extension { local_address, ...}, ...}
+  ) = let
+    infix ++
+    fun op++ (x,y) = Word48.+ (Word48.<< (x, 0w8), y)
+    fun l i = (Word48.fromInt
+	       (Word8.toInt
+		(Word_Array.W8.Native.F.nth (Word_Array.to8 local_address, i)))
+	      ) handle _ => raise Hostname_Lookup_Failed
+    val local_address_48 = l 0w0 ++ l 0w1 ++ l 0w2 ++ l 0w3 ++ l 0w4 ++ l 0w5
+  in
+    case (case Test_Addresses.eth_ip local_address_48 of
+	    SOME a => Test_Addresses.ip_name a
+	  | NONE => raise Hostname_Lookup_Failed) of
+      SOME name => name
+    | NONE => raise Hostname_Lookup_Failed
+  end
+
+  fun hostname interface_name = Dev.session (interface_name, run_session)
+end
+
+(* Network setup-------------------------------------------------------------*)
+
+val debug_level = SOME (ref 0)
+val telnet_port = Word16.fromInt 23
+
+local
+  val tcp_protocol = Word8.fromInt 6
+  val window_size = 4096
+  val user_timeout = 60000
+
+  structure Base = Build_Eth_Dev (
+    structure B = Fox_Basis
+    val high_priority_filter = true
+    val debug_level = debug_level
+  )
+
+  structure Stack = Build_Tcp (
+    structure Device = Base.Dev
+    structure B = Fox_Basis
+    val initial_window_size = window_size
+    val user_timeout = user_timeout
+    val compute_checksums = true
+    val tcp_over_ip = tcp_protocol
+    val eth_debug_level = debug_level
+    val arp_debug_level = debug_level
+    val ip_debug_level = debug_level
+    val icmp_debug_level = debug_level
+    val tcp_debug_level = debug_level)
+in
+  structure Ip = Stack.Ip
+  structure Tcp = Stack.Tcp
+  structure Hostname = Hostname (structure Dev = Base.Dev)
+end
+
+(* Telnet structure ---------------------------------------------------------*)
+
+fun send_urgent (
+  Tcp.C { extension = Tcp.Tcp_Connection_Extension { urgent_send, ... }, ... },
+  data
+) = urgent_send data
+
+fun parse_urgent (con, Tcp.Tcp_Status.Urgent_Data data) = SOME data
+  | parse_urgent _ = NONE
+
+fun flush _ = ()
+
+structure TelnetOpt = TelnetOpt (
+  structure TelnetIO = TelnetIO
+
+  val debug = false
+)
+
+structure Telnet = Telnet (
+  structure B         = Fox_Basis
+  structure TelnetOpt = TelnetOpt
+  structure TelnetIO  = TelnetIO
+
+  structure Lower  = Tcp
+  val send_urgent  = send_urgent
+  val parse_urgent = parse_urgent
+  val lower_flush  = flush
+
+  val debug = false
+)
+
+(*---------------------------------------------------------------------------*)

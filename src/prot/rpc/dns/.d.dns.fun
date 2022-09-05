@@ -1,0 +1,2 @@
+Decl 2
+(b f%Dns (l (h (d (a s%Trace (i f%Trace (h (a s%V (g s%B.V) 0)) F) 0) (f s%Trace s%SW s%B) (c (d (e s%FoxWord32)) (d )) (f s%FoxWord32 s%FoxWord16 s%FoxMakestring) (a s%Tcp_Or_Udp (g s%Tcp_Or_Udp) 0) (a s%Tree (i f%Tree (h (f )) F) 0) (f s%Integer s%String s%FoxWord8 s%FoxMakestring s%ByteArray s%System s%Tcp_Or_Udp s%FoxWord16 s%Tree s%B s%FoxWord32))) (g s$DNS) 0 (h (d (a s%B (g s$FOX_BASIS) 0) (a s%Tcp_Or_Udp (g s$PROTOCOL) 0) (f s%FoxWord32 s%FoxWord16 s%B s%Tcp_Or_Udp)))))

@@ -1,0 +1,2 @@
+Decl 2
+(d (b f%Ubyte1 (l (h (f s%ByteArray s%FoxWord8)) (g s$UBYTE1_LINEARIZE) 0 (h (d )))) (b f%Ubyte2 (l (h (f s%ByteArray s%Order s%Unaligned s%FoxWord16)) (g s$UBYTE2_LINEARIZE) 0 (h (d (a s%Order (g s$BYTE_ORDER) 0) (f s%Order s%FoxWord16))))) (b f%Ubyte4 (l (h (f s%V s%FoxWord32 s%ByteArray s%Order s%Unaligned s%System)) (g s$UBYTE4_LINEARIZE) 0 (h (d (a s%V (g s$VENDOR) 0) (a s%Order (g s$BYTE_ORDER) 0) (f s%Order s%FoxWord32))))))

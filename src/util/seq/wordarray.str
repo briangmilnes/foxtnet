@@ -1,0 +1,4734 @@
+(*
+
+	FoxNet: The Fox Project's Communication Protocol Implementation Effort
+	Edoardo Biagioni (esb@cs.cmu.edu)
+	Ken Cline (Kenneth.Cline@cs.cmu.edu)
+	Brian Milnes (Brian.Milnes@cs.cmu.edu)
+        Nick Haines (Nick.Haines@cs.cmu.edu)
+	Fox Project
+	School of Computer Science
+	Carnegie Mellon University
+	Pittsburgh, Pa 15213-3891
+
+		i.	Abstract
+
+	wordarray.str: word arrays.
+
+		ii.	Table of Contents
+
+	i.	Abstract
+	ii.	Table of Contents
+	iii.	RCS Log
+	1.	structure Word_Array_W32
+	2.	structure W32.Native
+	3.	structure W32.Big
+	4.	structure W32.U_Big/Little
+	5.	alignment functions
+	6.	structure Word_Array_W16
+	7.	structure W16.Native
+	8.	structure W16.Big
+	9.	structure W16.U_Big/Little
+	10.	alignment functions
+	11.	structure Word_Array_W8
+	12.	structure W8.Native
+	13.	alignment functions
+	14.	structure Word_Array_W64
+	15.	structure W64.Native
+	16.	structure W64.Big
+	17.	structure W64.U_Big/Little
+	18.	alignment functions
+	19.	structure Word_Array_W128
+	20.	structure W128.Native
+	21.	structure W128.Big
+	22.	structure W128.U_Big/Little
+	23.	alignment functions
+	24.	structure Word_Array_W256
+	25.	structure W256.Native
+	26.	structure W256.Big
+	27.	structure W256.U_Big/Little
+	28.	alignment functions
+	29.	structure Word_Array
+
+		iii.	RCS Log
+	
+$Log: wordarray.str,v $
+Revision 1.23  1997/11/14  11:56:58  cline
+updated to work with SMLNJ 109.32 basis
+
+Revision 1.22  1997/02/06  22:12:00  cline
+*** empty log message ***
+
+Revision 1.21  1997/02/06  20:14:47  cline
+updated for CM
+
+Revision 1.20  1997/02/05  20:05:04  esb
+optimized Word_Array_32 aligned representation and implementation.
+
+Revision 1.19  1996/12/20  21:48:14  esb
+adapted to 109.20, also inserted ';' between structures to speed compilation.
+
+Revision 1.18  1996/10/13  18:50:34  esb
+adapted to value restriction.
+
+Revision 1.17  1996/05/01  19:18:41  esb
+fixed bugs in align.
+
+Revision 1.16  1996/04/30  20:23:20  esb
+complete, more optimized re-implementation.
+
+Revision 1.15  1996/04/25  20:35:06  esb
+major re-implementation, only partly debugged, checked in for sharing.
+
+Revision 1.14  1996/03/12  22:28:24  esb
+adapted to new FOXWORD.
+
+Revision 1.13  1996/03/11  20:06:57  cline
+updated for 109.6
+
+Revision 1.12  1996/02/13  15:25:08  cline
+Removed Word32.W (wrapped word32 hacks)
+
+Revision 1.11  1996/02/06  23:42:30  esb
+changed to use more words and fewer ints.
+
+Revision 1.10  1996/01/19  23:07:31  esb
+adapted to the new wordarray signature.
+
+Revision 1.9  1996/01/15  18:00:49  cline
+removed FoxWord
+
+Revision 1.8  1995/12/18  18:58:00  esb
+fixed a bug in Rev.length (off by one)
+
+Revision 1.7  1995/11/12  16:46:02  esb
+adapted to new WORD_ARRAY signature.
+
+Revision 1.6  1995/09/18  19:33:03  esb
+added support for exposing word-arrays.
+
+Revision 1.5  1995/07/05  17:47:43  esb
+changed the definition of new to eliminate generator and iterator.
+
+Revision 1.4  1995/06/29  18:23:26  esb
+adapted to new monoseq.sig, adding reverse access operations.
+
+Revision 1.3  1995/06/22  20:35:50  cline
+swapped big_indices and little_indices
+
+Revision 1.2  1995/06/21  20:20:05  esb
+added tabulate.
+
+Revision 1.1  1995/06/20  17:33:50  esb
+Initial revision
+
+		1.	structure Word_Array_W32
+*)
+
+structure Word_Array_W32 =
+ struct
+
+  type T = {data: Word8Array.array, first: int, last: int}
+  type U = T
+  type element = Word32fox.word
+  exception Empty
+
+  local
+   val word_size = 4
+   datatype Aligned = A of {data: Word8Array.array, first: int, last: int}
+   datatype Aligned_Writable = AW of {data: Word8Array.array,
+				      first: int, last: int}
+
+   val empty_array = Word8Array.array (0, 0w0)
+   fun create_array size =
+        if size <= 0 then empty_array else Unsafe.Word8Array.create size
+   fun create_words count =
+        if count <= 0 then empty_array
+	else Unsafe.Word8Array.create (count * word_size)
+
+(* note "last" is negative if count is zero *)
+   fun make_words count =
+        A {data = create_words count, first = 0, last = count - 1}
+(*
+   fun make count =
+        let val bytes = count * word_size
+	    val last = bytes - word_size
+	    val result = create_array bytes
+	in {data = result, first = 0, last = last}
+	end
+*)
+
+   fun new_f gen value =
+        let fun eval NONE = []
+	      | eval (SOME (element, rest)) = element :: eval (gen rest)
+	    val values = eval (gen value)
+	    val count = List.length values
+	    val data = create_words count
+	    fun loop (_, []) = ()
+	      | loop (index, first :: rest) =
+	         (Pack32Little.update (data, index, first);
+		  loop (index + 1, rest))
+	in loop (0, values);
+	   A {data = data, first = 0, last = count - 1}
+	end
+(*
+   fun new_f gen value =
+        let fun eval NONE = []
+	      | eval (SOME (element, rest)) = element :: eval (gen rest)
+	    val values = eval (gen value)
+	    val bytes = List.length values * word_size
+	    val last = bytes - word_size
+	    val data = create_array bytes
+	    fun loop (_, []) = ()
+	      | loop (index, first :: rest) =
+	         (Word32fox.update (data, index, first);
+		  loop (index + word_size, rest))
+	in loop (0, values);
+	   {data = data, first = 0, last = last}
+	end
+*)
+
+   fun new_r gen value =
+        let fun eval NONE = []
+	      | eval (SOME (element, rest)) = element :: eval (gen rest)
+	    val values = eval (gen value)
+	    val count = List.length values
+	    val last = count - 1
+	    val data = create_words count
+	    fun loop (_, []) = ()
+	      | loop (index, first :: rest) =
+	         (Pack32Little.update (data, index, first);
+		  loop (index - 1, rest))
+	in loop (last, values);
+	   A {data = data, first = 0, last = last}
+	end
+(*
+   fun new_r gen value =
+        let fun eval NONE = []
+	      | eval (SOME (element, rest)) = element :: eval (gen rest)
+	    val values = eval (gen value)
+	    val bytes = List.length values * word_size
+	    val last = bytes - word_size
+	    val data = create_array bytes
+	    fun loop (_, []) = ()
+	      | loop (index, first :: rest) =
+	         (Word32fox.update (data, index, first);
+		  loop (index - word_size, rest))
+	in loop (last, values);
+	   {data = data, first = 0, last = last}
+	end
+*)
+
+   fun create (value, count) =
+	let val icount = Word.toInt count
+	    val last = icount - 1
+	    val data = create_words icount
+	    fun loop index =
+	         if index < 0 then ()
+		 else
+		  (Pack32Little.update (data, index, value);
+		   loop (index - 1))
+	in loop last;
+	   A {data = data, first = 0, last = last}
+	end
+(*
+   fun create (value, count) =
+	let val bytes = Word.toInt count * word_size
+	    val last = bytes - word_size
+	    val data = create_array bytes
+	    fun loop index =
+	         if index < 0 then ()
+		 else
+		  (Word32fox.update (data, index, value);
+		   loop (index - word_size))
+	in loop last;
+	   {data = data, first = 0, last = last}
+	end
+*)
+
+   fun tabulate_f (values, count) =
+        let val last = count - 0w1
+	    val data = create_words (Word.toInt count)
+	    fun loop index =
+		 if index >= count then ()
+		 else
+		  (Pack32Little.update (data, Word.toInt index, values index);
+		   loop (index + 0w1))
+	in loop 0w0;
+	   A {data = data, first = 0, last = Word.toInt last}
+	end
+(*
+   fun tabulate_f (values, count) =
+        let val bytes = Word.toInt count * word_size
+	    val last = bytes - word_size
+	    val data = create_array bytes
+	    fun loop (index, byte_index) =
+		 if index >= count then ()
+		 else
+		  (Word32fox.update (data, byte_index, values index);
+		   loop (index + 0w1, byte_index + word_size))
+	in loop (0w0, 0);
+	   {data = data, first = 0, last = last}
+	end
+*)
+
+   fun tabulate_r (values, count) =
+        if count > 0w0 then
+	 let val last = count - 0w1
+	     val data = create_words (Word.toInt count)
+	     fun loop index =
+		  if index = 0w0 then
+		   Pack32Little.update (data, Word.toInt index, values last)
+		  else
+		   (Pack32Little.update (data, Word.toInt index,
+					 values (last - index));
+		    loop (index - 0w1))
+	   in loop last;
+	      A {data = data, first = 0, last = Word.toInt last}
+	   end
+	else
+	 A {data = empty_array, first = 0, last = ~1}
+(*
+   fun tabulate_r (values, count) =
+	let val bytes = Word.toInt count * word_size
+	    val last = bytes - word_size
+	    val data = create_array bytes
+	    fun loop (index, byte_index) =
+		 if index >= count then ()
+		 else
+		  (Word32fox.update (data, byte_index, values index);
+		   loop (index + 0w1, byte_index - word_size))
+	  in loop (0w0, last);
+	     {data = data, first = 0, last = last}
+	  end
+*)
+
+   fun next_f (A {data, first, last}) =
+        if first > last then NONE
+	else SOME (Pack32Little.subArr (data, first),
+		   A {data = data, first = first + 1, last = last})
+(*
+   fun next_f {data, first, last} =
+        if first > last then NONE
+	else SOME (Word32fox.sub (data, first),
+		   {data = data, first = first + word_size, last = last})
+*)
+
+   fun next_r (A {data, first, last}) =
+        if first > last then NONE
+	else SOME (Pack32Little.subArr (data, last),
+		   A {data = data, first = first, last = last - 1})
+(*
+   fun next_r {data, first, last} =
+        if first > last then NONE
+	else SOME (Word32fox.sub (data, last),
+		   {data = data, first = first, last = last - word_size})
+*)
+
+   fun head next array =
+        case next array of
+	   NONE => raise Empty
+	 | SOME (head, _) => head
+
+   fun tail next array =
+        case next array of
+	   NONE => raise Empty
+	 | SOME (_, tail) => tail
+
+   fun seek_f (A {data, first, last}, count) =
+        A {data = data, first = first + Word.toInt count, last = last}
+
+   fun seek_r (A {data, first, last}, count) =
+        A {data = data, first = first, last = last - Word.toInt count}
+
+(*
+   fun seek_f ({data, first, last}, count) =
+        {data = data, first = first + word_size * Word.toInt count,
+	 last = last}
+
+   fun seek_r ({data, first, last}, count) =
+        {data = data, first = first,
+	 last = last - word_size * Word.toInt count}
+*)
+
+   fun parametrized_nth (next, seek) arg =
+        case next (seek arg) of
+	   NONE => raise Empty
+	 | SOME (head, _) => head
+
+   fun isempty (A {data, first: int, last}) = first > last
+
+   fun wait _ = ()
+
+   fun length (A {data, first, last}) =
+        Int.max ((last - first) + 1, 0)
+(*
+   fun length {data, first, last} =
+        Int.max ((last - first) div word_size + 1, 0)
+*)
+
+   fun map_f map (A {data, first, last}) =
+        let val count = Int.max (last - first + 1, 0)
+	    val new = create_words count
+	    fun loop index =
+	         if index >= count then ()
+		 else
+		  (Pack32Little.update (new, index,
+					map (Pack32Little.subArr
+					     (data, index + first)));
+		   loop (index + 1))
+	in loop 0;
+	   A {data = new, first = 0, last = count - 1}
+	end
+(*
+   fun map_f map {data, first, last} =
+        let val bytes = Int.max (last - first + word_size, 0)
+	    val new = create_array bytes
+	    fun loop index =
+	         if index >= bytes then ()
+		 else
+		  (Word32fox.update (new, index,
+				  map (Word32fox.sub (data, index + first)));
+		   loop (index + word_size))
+	in loop 0;
+	   {data = new, first = 0, last = bytes - word_size}
+	end
+*)
+
+   fun map_r map (A {data, first, last}) =
+        let val count = Int.max (last - first + 1, 0)
+	    val new = create_words count
+	    val new_last = count - 1
+	    fun loop index =
+	         if index < 0 then ()
+		 else
+		  (Pack32Little.update (new, index,
+					map (Pack32Little.subArr
+					     (data, index + first)));
+		   loop (index - 1))
+	in loop new_last;
+	   A {data = new, first = 0, last = new_last}
+	end
+(*
+   fun map_r map {data, first, last} =
+        let val bytes = Int.max (last - first + word_size, 0)
+	    val new = create_array bytes
+	    val new_last = bytes - word_size
+	    fun loop index =
+	         if index < 0 then ()
+		 else
+		  (Word32fox.update (new, index,
+				  map (Word32fox.sub (data, index + first)));
+		   loop (index - word_size))
+	in loop new_last;
+	   {data = new, first = 0, last = new_last}
+	end
+*)
+
+   fun app_f app (A {data, first, last}) =
+        let fun loop index =
+	         if index > last then ()
+		 else
+		  (app (Pack32Little.subArr (data, index));
+		   loop (index + 1))
+	in loop first
+	end
+(*
+   fun app_f app {data, first, last} =
+        let fun loop index =
+	         if index > last then ()
+		 else
+		  (app (Word32fox.sub (data, index));
+		   loop (index + word_size))
+	in loop first
+	end
+*)
+
+   fun app_r app (A {data, first, last}) =
+        let fun loop index =
+	         if index < first then ()
+		 else
+		  (app (Pack32Little.subArr (data, index));
+		   loop (index - 1))
+	in loop last
+	end
+(*
+   fun app_r app {data, first, last} =
+        let fun loop index =
+	         if index < first then ()
+		 else
+		  (app (Word32fox.sub (data, index));
+		   loop (index - word_size))
+	in loop last
+	end
+*)
+
+   fun fold_f fold init (A {data, first, last}) =
+        let fun loop (index, value) =
+	         if index > last then value
+		 else
+		  loop (index + 1,
+			fold (Pack32Little.subArr (data, index), value))
+	in loop (first, init)
+	end
+
+(*
+   fun fold_f fold init (A {data, first, last}) =
+     Pack32Little.fold fold init (data, first, last-first)
+*)
+
+(*
+   fun fold_f fold init {data, first, last} =
+        let val last_word = Bits.>> (last, 0w2)
+            fun loop (index, value) =
+	         if index > last_word then value
+		 else
+		  loop (index + 1,
+			fold (Word32fox.sub_aligned_word_index (data, index),
+			      value))
+	in loop (Bits.>> (first, 0w2), init)
+	end
+*)
+
+   fun fold_r fold init (A {data, first, last}) =
+        let fun loop (index, value) =
+                 if index < first then value
+		 else
+		  loop (index - 1,
+			fold (Pack32Little.subArr (data, index), value))
+        in loop (last, init)
+        end
+(*
+   fun fold_r fold init {data, first, last} =
+        let fun loop (index, value) =
+                 if index < first then value
+      	   else
+      	    loop (index - word_size,
+      		  fold (Word32fox.sub (data, index), value))
+        in loop (last, init)
+        end
+*)
+
+   fun equal_loop (d1, i1, 0, d2, i2) = true
+     | equal_loop (d1, i1, count, d2, i2) =
+        Pack32Little.subArr (d1, i1) = Pack32Little.subArr (d2, i2) andalso
+	equal_loop (d1, i1 + 1, count - 1, d2, i2 + 1)
+
+   fun equal (A {data = d1, first = f1, last = l1},
+	      A {data = d2, first = f2, last = l2}) =
+        (l1 < f1 andalso l2 < f2) orelse
+	(l1 - f1 = l2 - f2 andalso equal_loop (d1, f1, l1 - f1 + 1, d2, f2))
+(*
+   fun equal_loop (d1, i1, 0, d2, i2) = true
+     | equal_loop (d1, i1, bytes, d2, i2) =
+        Word32fox.sub (d1, i1) = Word32fox.sub (d2, i2) andalso
+	equal_loop (d1, i1 + word_size, bytes - word_size, d2, i2 + word_size)
+
+   fun equal ({data = d1, first = f1, last = l1},
+	      {data = d2, first = f2, last = l2}) =
+        (l1 < f1 andalso l2 < f2) orelse
+	(l1 - f1 = l2 - f2 andalso
+	equal_loop (d1, f1, l1 - f1 + word_size, d2, f2))
+*)
+
+(* lexicographic comparison:  aaz < ab < aba *)
+   fun less_f_loop (d1, f1, l1, d2, f2, l2) =
+        if f2 > l2 then false		(* second is shorter or same *)
+        else if f1 > l1 then true	(* first is shorter *)
+        else
+         let val v1 = Pack32Little.subArr (d1, f1)
+             val v2 = Pack32Little.subArr (d2, f2)
+         in v1 < v2 orelse
+            (v1 = v2 andalso
+             less_f_loop (d1, f1 + 1, l1, d2, f2 + 1, l2))
+         end
+(*
+   fun less_f_loop (d1, f1, l1, d2, f2, l2) =
+        if f2 > l2 then false		(* second is shorter or same *)
+        else if f1 > l1 then true	(* first is shorter *)
+        else
+         let val v1 = Word32fox.sub (d1, f1)
+             val v2 = Word32fox.sub (d2, f2)
+         in v1 < v2 orelse
+            (v1 = v2 andalso
+             less_f_loop (d1, f1 + word_size, l1, d2, f2 + word_size, l2))
+         end
+*)
+
+   fun less_f (A {data = d1, first = f1, last = l1},
+	       A {data = d2, first = f2, last = l2}) =
+        less_f_loop (d1, f1, l1, d2, f2, l2)
+
+   fun less_fb_loop (d1, f1, l1, d2, f2, l2) =
+        if f2 > l2 then false		(* second is shorter or same *)
+        else if f1 > l1 then true	(* first is shorter *)
+        else
+         let val v1 = Pack32Big.subArr (d1, f1)
+             val v2 = Pack32Big.subArr (d2, f2)
+         in v1 < v2 orelse
+            (v1 = v2 andalso
+             less_fb_loop (d1, f1 + 1, l1, d2, f2 + 1, l2))
+         end
+(*
+   fun less_fb_loop (d1, f1, l1, d2, f2, l2) =
+        if f2 > l2 then false		(* second is shorter or same *)
+        else if f1 > l1 then true	(* first is shorter *)
+        else
+         let val v1 = Word32fox.sub_big (d1, f1)
+             val v2 = Word32fox.sub_big (d2, f2)
+         in v1 < v2 orelse
+            (v1 = v2 andalso
+             less_fb_loop (d1, f1 + word_size, l1, d2, f2 + word_size, l2))
+         end
+*)
+
+   fun less_fb (A {data = d1, first = f1, last = l1},
+		A {data = d2, first = f2, last = l2}) =
+        less_fb_loop (d1, f1, l1, d2, f2, l2)
+
+(* reverse lexicographic comparison:  zaa < ba < aba *)
+   fun less_r_loop (d1, f1, l1, d2, f2, l2) =
+        if f2 > l2 then false		(* second is shorter or same *)
+        else if f1 > l1 then true	(* first is shorter *)
+        else
+         let val v1 = Pack32Little.subArr (d1, l1)
+             val v2 = Pack32Little.subArr (d2, l2)
+         in v1 < v2 orelse
+            (v1 = v2 andalso
+             less_r_loop (d1, f1, l1 - 1, d2, f2, l2 - 1))
+         end
+(*
+   fun less_r_loop (d1, f1, l1, d2, f2, l2) =
+        if f2 > l2 then false		(* second is shorter or same *)
+        else if f1 > l1 then true	(* first is shorter *)
+        else
+         let val v1 = Word32fox.sub (d1, l1)
+             val v2 = Word32fox.sub (d2, l2)
+         in v1 < v2 orelse
+            (v1 = v2 andalso
+             less_r_loop (d1, f1, l1 - word_size, d2, f2, l2 - word_size))
+         end
+*)
+
+   fun less_r (A {data = d1, first = f1, last = l1},
+	       A {data = d2, first = f2, last = l2}) =
+        less_r_loop (d1, f1, l1, d2, f2, l2)
+
+   fun less_rb_loop (d1, f1, l1, d2, f2, l2) =
+        if f2 > l2 then false		(* second is shorter or same *)
+        else if f1 > l1 then true	(* first is shorter *)
+        else
+         let val v1 = Pack32Big.subArr (d1, l1)
+             val v2 = Pack32Big.subArr (d2, l2)
+         in v1 < v2 orelse
+            (v1 = v2 andalso
+             less_rb_loop (d1, f1, l1 - 1, d2, f2, l2 - 1))
+         end
+(*
+   fun less_rb_loop (d1, f1, l1, d2, f2, l2) =
+        if f2 > l2 then false		(* second is shorter or same *)
+        else if f1 > l1 then true	(* first is shorter *)
+        else
+         let val v1 = Word32fox.sub_big (d1, l1)
+             val v2 = Word32fox.sub_big (d2, l2)
+         in v1 < v2 orelse
+            (v1 = v2 andalso
+             less_rb_loop (d1, f1, l1 - word_size, d2, f2, l2 - word_size))
+         end
+*)
+
+   fun less_rb (A {data = d1, first = f1, last = l1},
+		A {data = d2, first = f2, last = l2}) =
+        less_rb_loop (d1, f1, l1, d2, f2, l2)
+
+
+   fun filter_f filter =
+        let fun f NONE = NONE
+	      | f (SOME (first, rest)) =
+                 case filter first of
+		    NONE => f (next_f rest)
+		  | SOME value => SOME (value, next_f rest)
+        in (new_f f) o next_f
+        end
+
+   fun filter_r filter =
+        let fun f NONE = NONE
+      	| f (SOME (first, rest)) =
+                 case filter first of
+      	      NONE => f (next_r rest)
+      	    | SOME value => SOME (value, next_r rest)
+        in (new_r f) o next_r
+        end
+
+   fun append (A {data = d1, first = f1, last = l1},
+	       A {data = d2, first = f2, last = l2}) =
+        let val size = l1 - f1 + l2 - f2 + 2
+            val new = create_words size
+            fun copy1 index =
+                 if index < f1 then ()
+		 else
+		  (Pack32Little.update (new, index - f1,
+					Pack32Little.subArr (d1, index));
+		   copy1 (index - 1))
+            val off2 = f2 - l1 + f1 - 1
+            fun copy2 index =
+                 if index < f2 then ()
+		 else
+		  (Pack32Little.update (new, index - off2,
+					Pack32Little.subArr (d2, index));
+		   copy2 (index - 1))
+        in copy1 l1;
+           copy2 l2;
+           A {data = new, first = 0, last = size - 1}
+        end
+(*
+   fun append ({data = d1, first = f1, last = l1},
+	       {data = d2, first = f2, last = l2}) =
+        let val size = l1 - f1 + l2 - f2 + word_size + word_size
+            val new = create_array size
+            fun copy1 index =
+                 if index < f1 then ()
+		 else
+		  (Word32fox.update (new, index - f1, Word32fox.sub (d1, index));
+		   copy1 (index - word_size))
+            val off2 = f2 - l1 + f1 - word_size
+            fun copy2 index =
+                 if index < f2 then ()
+		 else
+		  (Word32fox.update (new, index - off2, Word32fox.sub (d2, index));
+		   copy2 (index - word_size))
+        in copy1 l1;
+           copy2 l2;
+           {data = new, first = 0, last = size - word_size}
+        end
+*)
+
+   fun reverse (A {data, first, last}) =
+        let val delta = last - first
+            val size = delta + 1
+            val new = create_words size
+            fun copy (read, write) =
+                 if read < first then ()
+		 else
+		  (Pack32Little.update (new, write,
+					Pack32Little.subArr (data, read));
+		   copy (read - 1, write + 1))
+        in copy (last, 0);
+           A {data = new, first = 0, last = delta}
+        end
+(*
+   fun reverse (array as {data, first, last}) =
+        let val delta = last - first
+            val size = delta + word_size
+            val new = create_array size
+            fun copy (read, write) =
+                 if read < first then ()
+		 else
+		  (Word32fox.update (new, write, Word32fox.sub (data, read));
+		   copy (read - word_size, write + word_size))
+        in copy (last, 0);
+           {data = new, first = 0, last = delta}
+        end
+*)
+
+   fun write (A (array as {data, first, last})) =
+        if first <= last then SOME (AW array) else NONE
+
+   fun read (AW array) = (A array)
+
+   local
+    val high = Word32.fromInt 0xff0000
+    val low = Word32.fromInt 0xff00
+   in
+    fun invert_bytes n =
+         Word32.orb (Word32.orb (Word32.<< (n, 0w24), Word32.>> (n, 0w24)),
+      	       Word32.orb (Word32.andb (Word32.<< (n, 0w8), high),
+      			   Word32.andb (Word32.>> (n, 0w8), low)))
+
+    fun invert_first (first, second) = (invert_bytes first, second)
+
+    fun invert_single NONE = NONE
+      | invert_single (SOME value) = SOME (invert_bytes value)
+
+    fun invert_option NONE = NONE
+      | invert_option (SOME (value, rest)) = SOME (invert_bytes value, rest)
+   end
+
+(*
+		2.	structure W32.Native
+*)
+
+  in
+   structure Native =
+    struct
+     type T = Aligned
+     type U = Aligned_Writable
+     type element = element
+
+     structure F =
+      struct
+       type T = T
+       type U = U
+       type element = element
+       exception Empty
+       val new = new_f
+       val next = next_f
+       val seek = seek_f
+       val head = head next_f
+       val tail = tail next_f
+       val nth = parametrized_nth (next_f, seek_f)
+       val isempty = isempty
+       val wait = wait
+       val map = map_f
+       val app = app_f
+       val fold = fold_f
+       val filter = filter_f
+       val create = create
+       val tabulate = tabulate_f
+       val equal = equal
+       val less = less_f
+       val length: (T -> Word.word) = Word.fromInt o length
+       val append = append
+       val reverse = reverse
+       val create_uninitialized = make_words o Word.toInt
+       val write = write
+       val read = read
+       fun update (AW {data, first, last}, value) =
+            (Pack32Little.update (data, first, value);
+             if first >= last then NONE
+             else
+              SOME (AW {data = data, first = first + 1, last = last}))
+      end
+
+     structure R =
+      struct
+       type T = T
+       type U = U
+       type element = element
+       exception Empty
+       val new = new_r
+       val next = next_r
+       val seek = seek_r
+       val head = head next_r
+       val tail = tail next_r
+       val nth = parametrized_nth (next_r, seek_r)
+       val isempty = isempty
+       val wait = wait
+       val map = map_r
+       val app = app_r
+       val fold = fold_r
+       val filter = filter_r
+       val create = create
+       val tabulate = tabulate_r
+       val equal = equal
+       val less = less_r
+       val length = F.length
+       val append = append
+       val reverse = reverse
+       val create_uninitialized = F.create_uninitialized
+       val write = write
+       val read = read
+       fun update (AW {data, first, last}, value) =
+            (Pack32Little.update (data, first, value);
+             if first >= last then NONE
+             else
+              SOME (AW {data = data, first = first, last = last - 1}))
+      end
+    end
+
+   exception Assumed_Wrong_Endianness_In_Word_Array
+   val _ = if Word32fox.bigEndian then
+            raise Assumed_Wrong_Endianness_In_Word_Array
+           else ()
+   structure Little = Native
+
+(*
+		3.	structure W32.Big
+*)
+
+   structure Big =
+    struct
+     type T = Aligned
+     type U = Aligned_Writable
+     type element = element
+
+     structure F =
+      struct
+       type T = T
+       type U = U
+       type element = element
+       exception Empty
+       fun new f = new_f (invert_option o f)
+       val next = invert_option o next_f
+       val seek = seek_f
+       val head = head next
+       val tail = tail next
+       val nth = parametrized_nth (next, seek_f)
+       val isempty = isempty
+       val wait = wait
+       fun map f = map_f (invert_bytes o f o invert_bytes)
+       fun app f = app_f (f o invert_bytes)
+       fun fold f = fold_f (f o invert_first)
+       fun filter f = filter_f (invert_single o f o invert_bytes)
+       fun create (value, n) = Little.F.create (invert_bytes value, n)
+       fun tabulate (f, n) = tabulate_f (invert_bytes o f, n)
+       val equal = equal
+       val less = less_fb
+       val length = Native.F.length
+       val append = append
+       val reverse = reverse
+       val create_uninitialized = Native.F.create_uninitialized
+       val write = write
+       val read = read
+       fun update (AW {data, first, last}, value) =
+            let val next = first + 1
+            in Pack32Big.update (data, first, value);
+               if next > last then NONE
+	       else SOME (AW {data = data, first = next, last = last})
+            end
+      end
+
+     structure R =
+      struct
+       type T = T
+       type U = U
+       type element = element
+       exception Empty
+       fun new f = new_r (invert_option o f)
+       val next = invert_option o next_r
+       val seek = seek_r
+       val head = head next
+       val tail = tail next
+       val nth = parametrized_nth (next, seek_r)
+       val isempty = isempty
+       val wait = wait
+       fun map f = map_r (invert_bytes o f o invert_bytes)
+       fun app f = app_r (f o invert_bytes)
+       fun fold f = fold_r (f o invert_first)
+       fun filter f = filter_r (invert_single o f o invert_bytes)
+       fun create (value, n) = Little.F.create (invert_bytes value, n)
+       fun tabulate (f, n) = tabulate_r (invert_bytes o f, n)
+       val equal = equal
+       val less = less_rb
+       val length = Native.F.length
+       val append = append
+       val reverse = reverse
+       val create_uninitialized = Native.F.create_uninitialized
+       val write = write
+       val read = read
+       fun update (AW {data, first, last}, value) =
+            let val next = last - 1
+            in Pack32Big.update (data, last, value);
+               if next < first then NONE
+	       else SOME (AW {data = data, first = first, last = next})
+            end
+      end
+    end
+
+(*
+		4.	structure W32.U_Big/Little
+
+ The unaligned-access structures which follow are not highly
+ optimized.  In theory, if you want high performance, you should use
+ the aligned accesses.
+*)
+
+   local
+    fun new_u new f arg =
+         let val A {data, first, last} = new f arg
+	 in {data = data, first = first * word_size, last = last * word_size}
+	 end
+
+    fun create_u create arg =
+         let val A {data, first, last} = create arg
+	 in {data = data, first = first * word_size, last = last * word_size}
+	 end
+
+    fun create_uninit_u arg =
+         let val A {data, first, last} = Native.F.create_uninitialized arg
+	 in {data = data, first = first * word_size, last = last * word_size}
+	 end
+
+    fun get_data (array, index) =
+         let fun tabulate i = Word8Array.sub (array, index + i)
+         in Word8Array.tabulate (word_size, tabulate)
+         end
+
+    fun sub_big arg = Word32fox.sub_big (get_data arg, 0)
+    fun sub_little arg = Word32fox.sub_little (get_data arg, 0)
+
+    fun next_uf sub {data, first, last} =
+         if first > last then NONE
+         else SOME (sub (data, first),
+      	      {data = data, first = first + word_size, last = last})
+
+    fun next_ur sub {data, first, last} =
+         if first > last then NONE
+         else SOME (sub (data, last),
+      	      {data = data, first = first, last = last - word_size})
+
+   fun seek_uf ({data, first, last}, count) =
+        {data = data,
+	 first = first + word_size * Word.toInt count, last = last}
+
+   fun seek_ur ({data, first, last}, count) =
+        {data = data,
+	 first = first, last = last - word_size * Word.toInt count}
+
+   fun isempty_u {data, first: int, last} = first > last
+
+   fun length_u {data, first: int, last} =
+        Word.fromInt ((last - first + word_size) div word_size)
+
+   fun map_u (new, next) f array =
+        let fun loop NONE = NONE
+	      | loop (SOME (first, rest)) =
+                 SOME (f first, next rest)
+	in new loop (next array)
+	end
+
+   fun app_u next f array =
+         let fun loop NONE = ()
+      	 | loop (SOME (first, rest)) =
+                  (f first;
+      	     loop (next rest))
+         in loop (next array)
+         end
+
+    fun fold_u next f first array =
+         let fun loop (NONE, accumulator) = accumulator
+      	 | loop (SOME (first, rest), accumulator) =
+                  loop (next rest, f (first, accumulator))
+         in loop (next array, first)
+         end
+
+    fun filter_u (new, next) f array =
+         let fun new_next NONE = NONE
+               | new_next (SOME (first, rest)) =
+                  case f first of
+      	       NONE => new_next (next rest)
+      	     | SOME value => SOME (value, next rest)
+         in new new_next (next array)
+         end
+
+    fun equal_u sub ({data = d1, first = f1, last = l1},
+		     {data = d2, first = f2, last = l2}) =
+         let fun loop (d1, i1, 0, d2, i2) = true
+	       | loop (d1, i1, bytes, d2, i2) =
+                  sub (d1, i1) = sub (d2, i2) andalso
+		  loop (d1, i1 + word_size, bytes - word_size,
+			d2, i2 + word_size)
+         in l1 - f1 = l2 - f2 andalso
+	    (l1 < f1 orelse equal_loop (d1, f1, l1 - f1, d2, f2))
+         end
+
+(* lexicographic comparison:  aaz < ab < aba *)
+    fun less_u next (a1, a2) =
+         let fun loop (_, NONE) = false
+      	 | loop (NONE, SOME _) = true
+      	 | loop (SOME (a: Word32fox.word, b), SOME (c, d)) =
+                  a < c orelse (a = c andalso loop (next b, next d))
+         in loop (next a1, next a2)
+         end
+
+    fun append_u (new, next) (a1, a2) =
+         let fun result (NONE, NONE) = NONE
+	       | result (NONE, SOME (element, next_array)) =
+                  SOME (element, (NONE, next next_array))
+	       | result (SOME (element, next_array), rest) =
+                  SOME (element, (next next_array, rest))
+         in new result (next a1, next a2)
+         end
+
+    fun reverse_uf (tabulate, sub) (array as {data, first, last}) =
+         let val length = length_u array
+	     fun get index = sub (data, last - Word.toInt index * word_size)
+	 in tabulate (get, length)
+	 end
+
+    val byte_mask = Word32.fromInt 0xff
+    fun get_byte (value, pos) =
+         Word8.fromInt (Word32.toInt (Word32.andb (Word32.>> (value, pos),
+      					     byte_mask)))
+
+    fun write_u (array as {data, first: int, last}) =
+         if first <= last then SOME array else NONE
+
+    fun read_u x = x
+
+   in
+    structure U_Big =
+     struct
+      type T = T
+      type U = U
+      type element = element
+
+      structure F =
+       struct
+        type T = T
+        type U = U
+        type element = element
+        exception Empty
+        fun new f arg = new_u Big.F.new f arg
+        val next = next_uf sub_big
+        val seek = seek_uf
+        val head = head next
+        val tail = tail next
+        val nth = parametrized_nth (next, seek)
+        val isempty = isempty_u
+        val wait = wait
+        val map = map_u (new, next)
+        fun app f v = app_u next f v
+        fun fold f init v = fold_u next f init v
+        val filter = filter_u (new, next)
+	val create = create_u Big.F.create
+        fun tabulate arg = let val A res = Big.F.tabulate arg in res end
+        val equal = equal_u sub_big
+        val less = less_u next
+        val length = length_u
+        val append = append_u (new, next)
+        val reverse = reverse_uf (tabulate, sub_big)
+        val create_uninitialized = create_uninit_u
+        val write = write_u
+        val read = read_u
+        fun update ({data, first, last}, value) =
+             let val next = first + word_size
+      	         val b1 = get_byte (value, 0w24)
+		 val b2 = get_byte (value, 0w16)
+		 val b3 = get_byte (value, 0w8)
+		 val b4 = get_byte (value, 0w0)
+             in Word8.update (data, first, b1);
+                Word8.update (data, first + 1, b2);
+                Word8.update (data, first + 2, b3);
+                Word8.update (data, first + 3, b4);
+                if next > last then NONE
+      	  else SOME {data = data, first = next, last = last}
+             end
+       end
+
+      structure R =
+       struct
+        type T = T
+        type U = U
+        type element = element
+        exception Empty
+        fun new f arg = new_u Big.R.new f arg
+        val next = next_ur sub_big
+        val seek = seek_ur
+        val head = head next
+        val tail = tail next
+        val nth = parametrized_nth (next, seek)
+        val isempty = isempty_u
+        val wait = wait
+        val map = map_u (new, next)
+        fun app f v = app_u next f v
+        fun fold f init v = fold_u next f init v
+        val filter = filter_u (new, next)
+	val create = create_u Big.R.create
+        fun tabulate arg = let val A res = Big.R.tabulate arg in res end
+        val equal = equal_u sub_big
+        val less = less_u next
+        val length = length_u
+        val append = append_u (new, next)
+        val reverse = F.reverse
+        val create_uninitialized = create_uninit_u
+        val write = write_u
+        val read = read_u
+        fun update ({data, first, last}, value) =
+             let val next = last - word_size
+      	         val b1 = get_byte (value, 0w24)
+      	         val b2 = get_byte (value, 0w16)
+      	         val b3 = get_byte (value, 0w8)
+      	         val b4 = get_byte (value, 0w0)
+             in Word8.update (data, last, b1);
+                Word8.update (data, last + 1, b2);
+                Word8.update (data, last + 2, b3);
+                Word8.update (data, last + 3, b4);
+                if next < first then NONE
+      	  else SOME {data = data, first = first, last = next}
+             end
+       end
+     end
+
+    structure U_Little =
+     struct
+      type T = T
+      type U = U
+      type element = element
+
+      structure F =
+       struct
+        type T = T
+        type U = U
+        type element = element
+        exception Empty
+        fun new f arg = new_u Little.F.new f arg
+        val next = next_uf sub_little
+        val seek = seek_uf
+        val head = head next
+        val tail = tail next
+        val nth = parametrized_nth (next, seek)
+        val isempty = isempty_u
+        val wait = wait
+        val map = map_u (new, next)
+        fun app f v = app_u next f v
+        fun fold f init v = fold_u next f init v
+        val filter = filter_u (new, next)
+	val create = create_u Little.F.create
+        fun tabulate arg = let val A res = tabulate_f arg in res end
+        val equal = equal_u sub_little
+        val less = less_u next
+        val length = length_u
+        val append = append_u (new, next)
+        val reverse = reverse_uf (tabulate, sub_little)
+        val create_uninitialized = create_uninit_u
+        val write = write_u
+        val read = read_u
+        fun update ({data, first, last}, value) =
+             let val next = first + word_size
+      	         val b4 = get_byte (value, 0w24)
+      	         val b3 = get_byte (value, 0w16)
+      	         val b2 = get_byte (value, 0w8)
+      	         val b1 = get_byte (value, 0w0)
+             in Word8.update (data, first, b1);
+                Word8.update (data, first + 1, b2);
+                Word8.update (data, first + 2, b3);
+                Word8.update (data, first + 3, b4);
+                if next > last then NONE
+      	  else SOME {data = data, first = next, last = last}
+             end
+       end
+
+      structure R =
+       struct
+        type T = T
+        type U = U
+        type element = element
+        exception Empty
+        fun new f arg = new_u Little.R.new f arg
+        val next = next_ur sub_little
+        val seek = seek_ur
+        val head = head next
+        val tail = tail next
+        val nth = parametrized_nth (next, seek)
+        val isempty = isempty_u
+        val wait = wait
+        val map = map_u (new, next)
+        fun app f v = app_u next f v
+        fun fold f init v = fold_u next f init v
+        val filter = filter_u (new, next)
+	val create = create_u Little.R.create
+        fun tabulate arg = let val A res = tabulate_r arg in res end
+        val equal = equal_u sub_big
+        val less = less_u next
+        val length = length_u
+        val append = append_u (new, next)
+        val reverse = F.reverse
+        val create_uninitialized = create_uninit_u
+        val write = write_u
+        val read = read_u
+        fun update ({data, first, last}, value) =
+             let val next = last - word_size
+      	         val b4 = get_byte (value, 0w24)
+      	         val b3 = get_byte (value, 0w16)
+      	         val b2 = get_byte (value, 0w8)
+      	         val b1 = get_byte (value, 0w0)
+             in Word8.update (data, last, b1);
+                Word8.update (data, last + 1, b2);
+                Word8.update (data, last + 2, b3);
+                Word8.update (data, last + 3, b4);
+                if next < first then NONE
+      	  else SOME {data = data, first = first, last = next}
+             end
+       end
+     end
+   end (* local *)
+
+   structure F_Big = Big.F
+   structure R_Big = Big.R
+   structure F_Little = Little.F
+   structure R_Little = Little.R
+
+(*
+		5.	alignment functions
+*)
+
+   val native_big_endian = Word32fox.bigEndian
+
+   local
+    val almost_word = word_size - 1
+    fun modulo n = Bits.andb (n, almost_word)
+   in
+    fun align {data, first, last} =
+         let val first_aligned = modulo first = 0
+             val last_aligned = modulo last = 0
+	 in if first_aligned andalso last_aligned then
+	     A {data = data,
+		first = first div word_size, last = last div word_size}
+	    else
+	     let val new_first = first div word_size +
+	                         (if first_aligned then 0 else 1)
+		 val new_last = last div word_size
+	     in A {data = data, first = new_first, last = new_last}
+	     end
+	 end
+
+(* note: we assume that "last" will never be used to access data,
+   only to compare to "first". *)
+    val align_f = align
+    val align_r = align
+
+    fun unalign (A {data, first, last}) =
+         {data = data, first = first * word_size, last = last * word_size}
+    val unalign_f = unalign
+    val unalign_r = unalign
+   end
+
+  end (* local *)
+ end;
+
+(*
+		6.	structure Word_Array_W16
+*)
+
+structure Word_Array_W16 =
+ struct
+
+  type T = {data: Word8Array.array, first: int, last: int}
+  type U = T
+  type element = Word16.word
+  exception Empty
+
+  local
+   val word_size = 2
+
+   val empty_array = Word8Array.array (0, 0w0)
+   fun create_array size =
+        if size <= 0 then empty_array else Unsafe.Word8Array.create size
+
+(* note "last" is negative if count is zero *)
+   fun make count =
+        let val bytes = count * word_size
+            val last = bytes - word_size
+            val result = create_array bytes
+        in {data = result, first = 0, last = last}
+        end
+
+   fun new_f gen value =
+        let fun eval NONE = []
+      	| eval (SOME (element, rest)) = element :: eval (gen rest)
+            val values = eval (gen value)
+            val bytes = List.length values * word_size
+            val last = bytes - word_size
+            val data = create_array bytes
+            fun loop (_, []) = ()
+      	| loop (index, first :: rest) =
+                 (Word16.update (data, index, first);
+      	    loop (index + word_size, rest))
+        in loop (0, values);
+           {data = data, first = 0, last = last}
+        end
+
+   fun new_r gen value =
+        let fun eval NONE = []
+      	| eval (SOME (element, rest)) = element :: eval (gen rest)
+            val values = eval (gen value)
+            val bytes = List.length values * word_size
+            val last = bytes - word_size
+            val data = create_array bytes
+            fun loop (_, []) = ()
+      	| loop (index, first :: rest) =
+                 (Word16.update (data, index, first);
+      	    loop (index - word_size, rest))
+        in loop (last, values);
+           {data = data, first = 0, last = last}
+        end
+
+   fun create (value, count) =
+        let val bytes = Word.toInt count * word_size
+            val last = bytes - word_size
+            val data = create_array bytes
+            fun loop index =
+                 if index < 0 then ()
+      	   else
+      	    (Word16.update (data, index, value);
+      	     loop (index - word_size))
+        in loop last;
+           {data = data, first = 0, last = last}
+        end
+
+   fun tabulate_f (values, count) =
+        let val bytes = Word.toInt count * word_size
+            val last = bytes - word_size
+            val data = create_array bytes
+            fun loop (index, byte_index) =
+	         if index >= count then ()
+		 else
+		  (Word16.update (data, byte_index, values index);
+		   loop (index + 0w1, byte_index + word_size))
+        in loop (0w0, 0);
+           {data = data, first = 0, last = last}
+        end
+
+   fun tabulate_r (values, count) =
+        let val bytes = Word.toInt count * word_size
+            val last = bytes - word_size
+            val data = create_array bytes
+            fun loop (index, byte_index) =
+	         if index >= count then ()
+		 else
+		  (Word16.update (data, byte_index, values index);
+		   loop (index + 0w1, byte_index - word_size))
+        in loop (0w0, last);
+           {data = data, first = 0, last = last}
+        end
+
+   fun next_f {data, first, last} =
+        if first > last then NONE
+        else SOME (Word16.sub (data, first),
+      	     {data = data, first = first + word_size, last = last})
+
+   fun next_r {data, first, last} =
+        if first > last then NONE
+        else SOME (Word16.sub (data, last),
+      	     {data = data, first = first, last = last - word_size})
+
+   fun head next array =
+        case next array of
+           NONE => raise Empty
+         | SOME (head, _) => head
+
+   fun tail next array =
+        case next array of
+           NONE => raise Empty
+         | SOME (_, tail) => tail
+
+   fun seek_f ({data, first, last}, count) =
+        {data = data, first = first + word_size * Word.toInt count,
+           last = last}
+
+   fun seek_r ({data, first, last}, count) =
+        {data = data, first = first,
+         last = last - word_size * Word.toInt count}
+
+   fun nth (next, seek) arg =
+        case next (seek arg) of
+           NONE => raise Empty
+         | SOME (head, _) => head
+
+   fun isempty {data, first: int, last} = first > last
+
+   fun wait _ = ()
+
+   fun length {data, first, last} =
+        Int.max ((last - first) div word_size + 1, 0)
+
+   fun map_f map {data, first, last} =
+        let val bytes = Int.max (last - first + word_size, 0)
+            val new = create_array bytes
+            fun loop index =
+                 if index >= bytes then ()
+		 else
+		  (Word16.update (new, index,
+				  map (Word16.sub (data, index + first)));
+		   loop (index + word_size))
+        in loop 0;
+           {data = new, first = 0, last = bytes - word_size}
+        end
+
+   fun map_r map {data, first, last} =
+        let val bytes = Int.max (last - first + word_size, 0)
+            val new = create_array bytes
+	    val new_last = bytes - word_size
+            fun loop index =
+                 if index < 0 then ()
+		 else
+		  (Word16.update (new, index,
+				  map (Word16.sub (data, index + first)));
+		   loop (index - word_size))
+        in loop new_last;
+           {data = new, first = 0, last = new_last}
+        end
+
+   fun app_f app {data, first, last} =
+        let fun loop index =
+                 if index > last then ()
+      	   else
+      	    (app (Word16.sub (data, index));
+      	     loop (index + word_size))
+        in loop first
+        end
+
+   fun app_r app {data, first, last} =
+        let fun loop index =
+                 if index < first then ()
+      	   else
+      	    (app (Word16.sub (data, index));
+      	     loop (index - word_size))
+        in loop last
+        end
+
+   fun fold_f fold init {data, first, last} =
+        let fun loop (index, value) =
+                 if index > last then value
+      	   else
+      	    loop (index + word_size,
+      		  fold (Word16.sub (data, index), value))
+        in loop (first, init)
+        end
+
+   fun fold_r fold init {data, first, last} =
+        let fun loop (index, value) =
+                 if index < first then value
+      	   else
+      	    loop (index - word_size,
+      		  fold (Word16.sub (data, index), value))
+        in loop (last, init)
+        end
+
+   fun equal_loop (d1, i1, 0, d2, i2) = true
+     | equal_loop (d1, i1, bytes, d2, i2) =
+        Word16.sub (d1, i1) = Word16.sub (d2, i2) andalso
+        equal_loop (d1, i1 + word_size, bytes - word_size,
+      	      d2, i2 + word_size)
+
+   fun equal ({data = d1, first = f1, last = l1},
+	      {data = d2, first = f2, last = l2}) =
+        (l1 < f1 andalso l2 < f2) orelse
+	(l1 - f1 = l2 - f2 andalso equal_loop (d1, f1, l1 - f1, d2, f2))
+
+(* lexicographic comparison:  aaz < ab < aba *)
+   fun less_f_loop (d1, f1, l1, d2, f2, l2) =
+        if f2 > l2 then false		(* second is shorter or same *)
+        else if f1 > l1 then true	(* first is shorter *)
+        else
+         let val v1 = Word16.sub (d1, f1)
+             val v2 = Word16.sub (d2, f2)
+         in Word16.< (v1, v2) orelse
+            (v1 = v2 andalso
+             less_f_loop (d1, f1 + word_size, l1, d2, f2 + word_size, l2))
+         end
+
+   fun less_f ({data = d1, first = f1, last = l1},
+     	 {data = d2, first = f2, last = l2}) =
+        less_f_loop (d1, f1, l1, d2, f2, l2)
+
+   fun less_fb_loop (d1, f1, l1, d2, f2, l2) =
+        if f2 > l2 then false		(* second is shorter or same *)
+        else if f1 > l1 then true	(* first is shorter *)
+        else
+         let val v1 = Word16.sub_big (d1, f1)
+             val v2 = Word16.sub_big (d2, f2)
+         in Word16.< (v1, v2) orelse
+            (v1 = v2 andalso
+             less_fb_loop (d1, f1 + word_size, l1, d2, f2 + word_size, l2))
+         end
+
+   fun less_fb ({data = d1, first = f1, last = l1},
+     	  {data = d2, first = f2, last = l2}) =
+        less_fb_loop (d1, f1, l1, d2, f2, l2)
+
+(* reverse lexicographic comparison:  zaa < ba < aba *)
+   fun less_r_loop (d1, f1, l1, d2, f2, l2) =
+        if f2 > l2 then false		(* second is shorter or same *)
+        else if f1 > l1 then true	(* first is shorter *)
+        else
+         let val v1 = Word16.sub (d1, l1)
+             val v2 = Word16.sub (d2, l2)
+         in Word16.< (v1, v2) orelse
+            (v1 = v2 andalso
+             less_r_loop (d1, f1, l1 - word_size, d2, f2, l2 - word_size))
+         end
+
+   fun less_r ({data = d1, first = f1, last = l1},
+     	 {data = d2, first = f2, last = l2}) =
+        less_r_loop (d1, f1, l1, d2, f2, l2)
+
+   fun less_rb_loop (d1, f1, l1, d2, f2, l2) =
+        if f2 > l2 then false		(* second is shorter or same *)
+        else if f1 > l1 then true	(* first is shorter *)
+        else
+         let val v1 = Word16.sub (d1, l1)
+             val v2 = Word16.sub (d2, l2)
+         in Word16.< (v1, v2) orelse
+            (v1 = v2 andalso
+             less_rb_loop (d1, f1, l1 - word_size, d2, f2, l2 - word_size))
+         end
+
+   fun less_rb ({data = d1, first = f1, last = l1},
+     	  {data = d2, first = f2, last = l2}) =
+        less_rb_loop (d1, f1, l1, d2, f2, l2)
+
+
+   fun filter_f filter =
+        let fun f NONE = NONE
+     	| f (SOME (first, rest)) =
+                 case filter first of
+     	      NONE => f (next_f rest)
+     	    | SOME value => SOME (value, next_f rest)
+        in (new_f f) o next_f
+        end
+
+   fun filter_r filter =
+        let fun f NONE = NONE
+     	| f (SOME (first, rest)) =
+                 case filter first of
+     	      NONE => f (next_r rest)
+     	    | SOME value => SOME (value, next_r rest)
+        in (new_r f) o next_r
+        end
+
+   fun append ({data = d1, first = f1, last = l1},
+	       {data = d2, first = f2, last = l2}) =
+        let val size = l1 - f1 + l2 - f2 + word_size + word_size
+            val new = create_array size
+            fun copy1 index =
+                 if index < f1 then ()
+     	   else
+     	    (Word16.update (new, index - f1, Word16.sub (d1, index));
+     	     copy1 (index - word_size))
+            val off2 = f2 - l1 + f1 - word_size
+            fun copy2 index =
+                 if index < f2 then ()
+     	   else
+     	    (Word16.update (new, index - off2, Word16.sub (d2, index));
+     	     copy2 (index - word_size))
+        in copy1 l1;
+           copy2 l2;
+           {data = new, first = 0, last = size - word_size}
+        end
+
+   fun reverse (array as {data, first, last}) =
+        let val delta = last - first
+            val size = delta + word_size
+            val new = create_array size
+            fun copy (read, write) =
+                 if read < first then ()
+     	   else
+     	    (Word16.update (new, write, Word16.sub (data, read));
+     	     copy (read - word_size, write + word_size))
+        in copy (last, 0);
+           {data = new, first = 0, last = delta}
+        end
+
+   fun write (array as {data, first, last: int}) =
+        if first <= last then SOME array else NONE
+
+   fun read array = array
+
+   fun invert_bytes n =
+        Word16.orb (Word16.<< (n, 0w8), Word16.>> (n, 0w8))
+
+   fun invert_first (first, second) = (invert_bytes first, second)
+
+   fun invert_single NONE = NONE
+     | invert_single (SOME value) = SOME (invert_bytes value)
+
+   fun invert_option NONE = NONE
+     | invert_option (SOME (value, rest)) = SOME (invert_bytes value, rest)
+
+(*
+		7.	structure W16.Native
+*)
+
+  in
+   structure Native =
+    struct
+     type T = T
+     type U = U
+     type element = element
+
+     structure F =
+      struct
+       type T = T
+       type U = U
+       type element = element
+       exception Empty
+       val new = new_f
+       val next = next_f
+       val seek = seek_f
+       val head = head next_f
+       val tail = tail next_f
+       val nth = nth (next_f, seek_f)
+       val isempty = isempty
+       val wait = wait
+       val map = map_f
+       fun app f v = app_f f v
+       val fold = fold_f
+       val filter = filter_f
+       val create = create
+       val tabulate = tabulate_f
+       val equal = equal
+       val less = less_f
+       val length: (T -> Word.word) = Word.fromInt o length
+       val append = append
+       val reverse = reverse
+       val create_uninitialized = make o Word.toInt
+       val write = write
+       val read = read
+       fun update ({data, first, last}, value) =
+            (Word16.update (data, first, value);
+             if first + word_size > last then NONE
+             else
+              SOME ({data = data, first = first + word_size, last = last}))
+      end
+
+     structure R =
+      struct
+       type T = T
+       type U = U
+       type element = element
+       exception Empty
+       val new = new_r
+       val next = next_r
+       val seek = seek_r
+       val head = head next_r
+       val tail = tail next_r
+       val nth = nth (next_r, seek_r)
+       val isempty = isempty
+       val wait = wait
+       val map = map_r
+       fun app f v = app_r f v
+       val fold = fold_r
+       val filter = filter_r
+       val create = create
+       val tabulate = tabulate_r
+       val equal = equal
+       val less = less_r
+       val length = F.length
+       val append = append
+       val reverse = reverse
+       val create_uninitialized = F.create_uninitialized
+       val write = write
+       val read = read
+       fun update ({data, first, last}, value) =
+            (Word16.update (data, last, value);
+             if first + word_size > last then NONE
+             else
+              SOME ({data = data, first = first, last = last - word_size}))
+      end
+    end
+
+   exception Assumed_Wrong_Endianness_In_Word_Array
+   val _ = if Word16.bigEndian then
+            raise Assumed_Wrong_Endianness_In_Word_Array
+           else ()
+   structure Little = Native
+
+(*
+		8.	structure W16.Big
+*)
+
+   structure Big =
+    struct
+     type T = T
+     type U = U
+     type element = element
+
+     structure F =
+      struct
+       type T = T
+       type U = U
+       type element = element
+       exception Empty
+       fun new f = new_f (invert_option o f)
+       val next = invert_option o next_f
+       val seek = seek_f
+       val head = head next
+       val tail = tail next
+       val nth = nth (next, seek_f)
+       val isempty = isempty
+       val wait = wait
+       fun map f = map_f (invert_bytes o f o invert_bytes)
+       fun app f = app_f (f o invert_bytes)
+       fun fold f = fold_f (f o invert_first)
+       fun filter f = filter_f (invert_single o f o invert_bytes)
+       fun create (value, n) = Little.F.create (invert_bytes value, n)
+       fun tabulate (f, n) = tabulate_f (invert_bytes o f, n)
+       val equal = equal
+       val less = less_fb
+       val length = Native.F.length
+       val append = append
+       val reverse = reverse
+       val create_uninitialized = Native.F.create_uninitialized
+       val write = write
+       val read = read
+       fun update ({data, first, last}, value) =
+            let val next = first + word_size
+            in Word16.update_big (data, first, value);
+               if next > last then NONE
+     	 else SOME {data = data, first = next, last = last}
+            end
+      end
+
+     structure R =
+      struct
+       type T = T
+       type U = U
+       type element = element
+       exception Empty
+       fun new f = new_r (invert_option o f)
+       val next = invert_option o next_r
+       val seek = seek_r
+       val head = head next
+       val tail = tail next
+       val nth = nth (next, seek_r)
+       val isempty = isempty
+       val wait = wait
+       fun map f = map_r (invert_bytes o f o invert_bytes)
+       fun app f = app_r (f o invert_bytes)
+       fun fold f = fold_r (f o invert_first)
+       fun filter f = filter_r (invert_single o f o invert_bytes)
+       fun create (value, n) = Little.F.create (invert_bytes value, n)
+       fun tabulate (f, n) = tabulate_r (invert_bytes o f, n)
+       val equal = equal
+       val less = less_rb
+       val length = Native.F.length
+       val append = append
+       val reverse = reverse
+       val create_uninitialized = Native.F.create_uninitialized
+       val write = write
+       val read = read
+       fun update ({data, first, last}, value) =
+            let val next = last - word_size
+            in Word16.update_big (data, last, value);
+               if next < first then NONE
+     	 else SOME {data = data, first = first, last = next}
+            end
+      end
+    end
+
+(*
+		9.	structure W16.U_Big/Little
+
+ The unaligned-access structures which follow are not highly
+ optimized.  In theory, if you want high performance, you should use
+ the aligned accesses.
+*)
+
+   local
+    fun sub_big (array, index) =
+         Word16.orb
+           (Word16.<<
+            (Word16.fromInt (Word8.toInt (Word8.sub (array, index))), 0w8),
+            Word16.fromInt (Word8.toInt (Word8.sub (array, index + 1))))
+
+    fun sub_little (array, index) =
+         Word16.orb
+           (Word16.<<
+            (Word16.fromInt (Word8.toInt (Word8.sub (array, index + 1))),
+             0w8),
+            Word16.fromInt (Word8.toInt (Word8.sub (array, index))))
+
+    fun next_uf sub {data, first, last} =
+         if first > last then NONE
+         else SOME (sub (data, first),
+     	      {data = data, first = first + word_size, last = last})
+
+    fun next_ur sub {data, first, last} =
+         if first > last then NONE
+         else SOME (sub (data, last),
+     	      {data = data, first = first, last = last - word_size})
+
+    fun map_u (new, next) f array =
+         let fun loop NONE = NONE
+	       | loop (SOME (first, rest)) =
+                  SOME (f first, next rest)
+         in new loop (next array)
+         end
+
+    fun app_u next f array =
+         let fun loop NONE = ()
+     	 | loop (SOME (first, rest)) =
+                  (f first;
+     	     loop (next rest))
+         in loop (next array)
+         end
+
+    fun fold_u next f first array =
+         let fun loop (NONE, accumulator) = accumulator
+     	 | loop (SOME (first, rest), accumulator) =
+                  loop (next rest, f (first, accumulator))
+         in loop (next array, first)
+         end
+
+    fun filter_u (new, next) f array =
+         let fun new_next NONE = NONE
+               | new_next (SOME (first, rest)) =
+                  case f first of
+     	       NONE => new_next (next rest)
+     	     | SOME value => SOME (value, next rest)
+         in new new_next (next array)
+         end
+
+    fun equal_u sub ({data = d1, first = f1, last = l1},
+     	       {data = d2, first = f2, last = l2}) =
+         let fun loop (d1, i1, 0, d2, i2) = true
+	       | loop (d1, i1, bytes, d2, i2) =
+                  sub (d1, i1) = sub (d2, i2) andalso
+		  loop (d1, i1 + word_size, bytes - word_size,
+			d2, i2 + word_size)
+         in l1 - f1 = l2 - f2 andalso
+	    (l1 < f1 orelse equal_loop (d1, f1, l1 - f1, d2, f2))
+         end
+
+(* lexicographic comparison:  aaz < ab < aba *)
+    fun less_u next (a1, a2) =
+         let fun loop (_, NONE) = false
+     	 | loop (NONE, SOME _) = true
+     	 | loop (SOME (a: Word16.word, b), SOME (c, d)) =
+                  Word16.< (a, c) orelse
+                  (a = c andalso loop (next b, next d))
+         in loop (next a1, next a2)
+         end
+
+    fun append_u (new, next) (a1, a2) =
+         let fun result (NONE, NONE) = NONE
+     	 | result (NONE, SOME (element, next_array)) =
+                  SOME (element, (NONE, next next_array))
+     	 | result (SOME (element, next_array), rest) =
+                  SOME (element, (next next_array, rest))
+         in new result (next a1, next a2)
+         end
+
+    fun reverse_uf (tabulate, sub) (array as {data, first, last}) =
+         let val length = Word.fromInt (length array)
+	     fun get index = sub (data, last - Word.toInt index * word_size)
+	 in tabulate (get, length)
+	 end
+
+    val byte_mask = Word16.fromInt 0xff
+    fun get_byte (value, pos) =
+         Word8.fromInt (Word16.toInt (Word16.andb (Word16.>> (value, pos),
+     					     byte_mask)))
+   in
+    structure U_Big =
+     struct
+      type T = T
+      type U = U
+      type element = element
+
+      structure F =
+       struct
+        type T = T
+        type U = U
+        type element = element
+        exception Empty
+        val new = Big.F.new
+        val next = next_uf sub_big
+        val seek = seek_f
+        val head = head next
+        val tail = tail next
+        val nth = nth (next, seek)
+        val isempty = isempty
+        val wait = wait
+        val map = map_u (new, next)
+        fun app f v = app_u next f v
+        fun fold f init v = fold_u next f init v
+        val filter = filter_u (new, next)
+        val create = Big.F.create
+        val tabulate = Big.F.tabulate
+        val equal = equal_u sub_big
+        val less = less_u next
+        val length = Native.F.length
+        val append = append_u (new, next)
+        val reverse = reverse_uf (tabulate, sub_big)
+        val create_uninitialized = Native.F.create_uninitialized
+        val write = write
+        val read = read
+        fun update ({data, first, last}, value) =
+             let val next = first + word_size
+     	   val b1 = get_byte (value, 0w8)
+     	   val b2 = get_byte (value, 0w0)
+             in Word8.update (data, first, b1);
+                Word8.update (data, first + 1, b2);
+                if next > last then NONE
+     	  else SOME {data = data, first = next, last = last}
+             end
+       end
+
+      structure R =
+       struct
+        type T = T
+        type U = U
+        type element = element
+        exception Empty
+        val new = Big.R.new
+        val next = next_ur sub_big
+        val seek = seek_r
+        val head = head next
+        val tail = tail next
+        val nth = nth (next, seek)
+        val isempty = isempty
+        val wait = wait
+        val map = map_u (new, next)
+        fun app f v = app_u next f v
+        fun fold f init v = fold_u next f init v
+        val filter = filter_u (new, next)
+        val create = Big.R.create
+        val tabulate = Big.R.tabulate
+        val equal = equal_u sub_big
+        val less = less_u next
+        val length = Native.F.length
+        val append = append_u (new, next)
+        val reverse = F.reverse
+        val create_uninitialized = Native.F.create_uninitialized
+        val write = write
+        val read = read
+        fun update ({data, first, last}, value) =
+             let val next = last - word_size
+     	   val b1 = get_byte (value, 0w8)
+     	   val b2 = get_byte (value, 0w0)
+             in Word8.update (data, last, b1);
+                Word8.update (data, last + 1, b2);
+                if next < first then NONE
+     	  else SOME {data = data, first = first, last = next}
+             end
+       end
+     end
+
+    structure U_Little =
+     struct
+      type T = T
+      type U = U
+      type element = element
+
+      structure F =
+       struct
+        type T = T
+        type U = U
+        type element = element
+        exception Empty
+        val new = Little.F.new
+        val next = next_uf sub_little
+        val seek = seek_f
+        val head = head next
+        val tail = tail next
+        val nth = nth (next, seek)
+        val isempty = isempty
+        val wait = wait
+        val map = map_u (new, next)
+        fun app f v = app_u next f v
+        fun fold f init v = fold_u next f init v
+        val filter = filter_u (new, next)
+        val create = create
+        val tabulate = Little.F.tabulate
+        val equal = equal_u sub_little
+        val less = less_u next
+        val length = Native.F.length
+        val append = append_u (new, next)
+        val reverse = reverse_uf (tabulate, sub_little)
+        val create_uninitialized = Native.F.create_uninitialized
+        val write = write
+        val read = read
+        fun update ({data, first, last}, value) =
+             let val next = first + word_size
+     	   val b2 = get_byte (value, 0w8)
+     	   val b1 = get_byte (value, 0w0)
+             in Word8.update (data, first, b1);
+                Word8.update (data, first + 1, b2);
+                if next > last then NONE
+     	  else SOME {data = data, first = next, last = last}
+             end
+       end
+
+      structure R =
+       struct
+        type T = T
+        type U = U
+        type element = element
+        exception Empty
+        val new = Little.R.new
+        val next = next_ur sub_little
+        val seek = seek_r
+        val head = head next
+        val tail = tail next
+        val nth = nth (next, seek)
+        val isempty = isempty
+        val wait = wait
+        val map = map_u (new, next)
+        fun app f v = app_u next f v
+        fun fold f init v = fold_u next f init v
+        val filter = filter_u (new, next)
+        val create = Little.R.create
+        val tabulate = Little.R.tabulate
+        val equal = equal_u sub_big
+        val less = less_u next
+        val length = Native.F.length
+        val append = append_u (new, next)
+        val reverse = F.reverse
+        val create_uninitialized = Native.F.create_uninitialized
+        val write = write
+        val read = read
+        fun update ({data, first, last}, value) =
+             let val next = last - word_size
+     	   val b2 = get_byte (value, 0w8)
+     	   val b1 = get_byte (value, 0w0)
+             in Word8.update (data, last, b1);
+                Word8.update (data, last + 1, b2);
+                if next < first then NONE
+     	  else SOME {data = data, first = first, last = next}
+             end
+       end
+     end
+   end (* local *)
+
+   structure F_Big = Big.F
+   structure R_Big = Big.R
+   structure F_Little = Little.F
+   structure R_Little = Little.R
+
+(*
+		10.	alignment functions
+*)
+
+   val native_big_endian = Word16.bigEndian
+
+   local
+    val almost_word = word_size - 1
+    fun modulo n = Bits.andb (n, almost_word)
+   in
+    fun align (array as {data, first, last}) =
+         if modulo first = 0 andalso modulo last = 0 then array
+         else
+	  let val new_first = first + almost_word
+	  in {data = data, first = new_first - modulo new_first,
+	      last = last - modulo last}
+	  end
+
+    fun align_f (array as {data, first, last}) =
+         if modulo first = 0 then array
+	 else
+	  let val new_first = first + almost_word
+	  in {data = data, first = new_first - modulo new_first, last = last}
+	  end
+
+    fun align_r (array as {data, first, last}) =
+         if modulo last = 0 then array
+         else {data = data, first = first, last = last - modulo last}
+
+    fun unalign x = x
+    val unalign_f = unalign
+    val unalign_r = unalign
+   end
+  end (* local *)
+ end;
+
+(*
+		11.	structure Word_Array_W8
+*)
+
+structure Word_Array_W8 =
+ struct
+
+  type T = {data: Word8Array.array, first: int, last: int}
+  type U = T
+  type element = Word8.word
+  exception Empty
+
+  local
+   val word_size = 1
+
+   val empty_array = Word8Array.array (0, 0w0)
+   fun create_array size =
+        if size <= 0 then empty_array else Unsafe.Word8Array.create size
+
+(* note "last" is negative if count is zero *)
+   fun make count =
+        let val bytes = count * word_size
+            val last = bytes - word_size
+            val result = create_array bytes
+        in {data = result, first = 0, last = last}
+        end
+
+   fun new_f gen value =
+        let fun eval NONE = []
+     	| eval (SOME (element, rest)) = element :: eval (gen rest)
+            val values = eval (gen value)
+            val bytes = List.length values * word_size
+            val last = bytes - word_size
+            val data = create_array bytes
+            fun loop (_, []) = ()
+     	| loop (index, first :: rest) =
+                 (Word8.update (data, index, first);
+     	    loop (index + word_size, rest))
+        in loop (0, values);
+           {data = data, first = 0, last = last}
+        end
+
+   fun new_r gen value =
+        let fun eval NONE = []
+     	| eval (SOME (element, rest)) = element :: eval (gen rest)
+            val values = eval (gen value)
+            val bytes = List.length values * word_size
+            val last = bytes - word_size
+            val data = create_array bytes
+            fun loop (_, []) = ()
+     	| loop (index, first :: rest) =
+                 (Word8.update (data, index, first);
+     	    loop (index - word_size, rest))
+        in loop (last, values);
+           {data = data, first = 0, last = last}
+        end
+
+   fun create (value, count) =
+        let val bytes = Word.toInt count * word_size
+            val last = bytes - word_size
+            val data = create_array bytes
+            fun loop index =
+                 if index < 0 then ()
+     	   else
+     	    (Word8.update (data, index, value);
+     	     loop (index - word_size))
+        in loop last;
+           {data = data, first = 0, last = last}
+        end
+
+   fun tabulate_f (values, count) =
+        let val bytes = Word.toInt count * word_size
+            val last = bytes - word_size
+            val data = create_array bytes
+            fun loop (index, byte_index) =
+     	         if index >= count then ()
+     	         else
+     	          (Word8.update (data, byte_index, values index);
+     	           loop (index + 0w1, byte_index + word_size))
+        in loop (0w0, 0);
+           {data = data, first = 0, last = last}
+        end
+
+   fun tabulate_r (values, count) =
+        let val bytes = Word.toInt count * word_size
+            val last = bytes - word_size
+	    val data = create_array bytes
+	    fun loop (index, byte_index) =
+     	         if index >= count then ()
+		 else
+		  (Word8.update (data, byte_index, values index);
+		   loop (index + 0w1, byte_index - word_size))
+	in loop (0w0, last);
+           {data = data, first = 0, last = last}
+	end
+
+   fun next_f {data, first, last} =
+        if first > last then NONE
+        else SOME (Word8.sub (data, first),
+     	     {data = data, first = first + word_size, last = last})
+
+   fun next_r {data, first, last} =
+        if first > last then NONE
+        else SOME (Word8.sub (data, last),
+     	     {data = data, first = first, last = last - word_size})
+
+   fun head next array =
+        case next array of
+           NONE => raise Empty
+         | SOME (head, _) => head
+
+   fun tail next array =
+        case next array of
+           NONE => raise Empty
+         | SOME (_, tail) => tail
+
+   fun seek_f ({data, first, last}, count) =
+        {data = data, first = first + word_size * Word.toInt count,
+           last = last}
+
+   fun seek_r ({data, first, last}, count) =
+        {data = data, first = first,
+         last = last - word_size * Word.toInt count}
+
+   fun nth (next, seek) arg =
+        case next (seek arg) of
+           NONE => raise Empty
+         | SOME (head, _) => head
+
+   fun isempty {data, first: int, last} = first > last
+
+   fun wait _ = ()
+
+   fun length {data, first, last} =
+        Int.max ((last - first) div word_size + 1, 0)
+
+   fun map_f map {data, first, last} =
+        let val bytes = Int.max (last - first + word_size, 0)
+            val new = create_array bytes
+            fun loop index =
+                 if index >= bytes then ()
+		 else
+		  (Word8.update (new, index,
+				 map (Word8.sub (data, index + first)));
+		   loop (index + word_size))
+        in loop 0;
+           {data = new, first = 0, last = bytes - word_size}
+        end
+
+   fun map_r map {data, first, last} =
+        let val bytes = Int.max (last - first + word_size, 0)
+            val new = create_array bytes
+	    val new_last = bytes - word_size
+            fun loop index =
+                 if index < 0 then ()
+		 else
+		  (Word8.update (new, index,
+				 map (Word8.sub (data, index + first)));
+		   loop (index - word_size))
+        in loop new_last;
+           {data = new, first = 0, last = new_last}
+        end
+
+   fun app_f app {data, first, last} =
+        let fun loop index =
+                 if index > last then ()
+     	   else
+     	    (app (Word8.sub (data, index));
+     	     loop (index + word_size))
+        in loop first
+        end
+
+   fun app_r app {data, first, last} =
+        let fun loop index =
+                 if index < first then ()
+     	   else
+     	    (app (Word8.sub (data, index));
+     	     loop (index - word_size))
+        in loop last
+        end
+
+   fun fold_f fold init {data, first, last} =
+        let fun loop (index, value) =
+                 if index > last then value
+     	   else
+     	    loop (index + word_size,
+      		  fold (Word8.sub (data, index), value))
+        in loop (first, init)
+        end
+
+   fun fold_r fold init {data, first, last} =
+        let fun loop (index, value) =
+                 if index < first then value
+      	   else
+      	    loop (index - word_size,
+      		  fold (Word8.sub (data, index), value))
+        in loop (last, init)
+        end
+
+   fun equal_loop (d1, i1, 0, d2, i2) = true
+     | equal_loop (d1, i1, bytes, d2, i2) =
+        Word8.sub (d1, i1) = Word8.sub (d2, i2) andalso
+        equal_loop (d1, i1 + word_size, bytes - word_size,
+      	      d2, i2 + word_size)
+
+   fun equal ({data = d1, first = f1, last = l1},
+	      {data = d2, first = f2, last = l2}) =
+        (l1 < f1 andalso l2 < f2) orelse
+	(l1 - f1 = l2 - f2 andalso equal_loop (d1, f1, l1 - f1, d2, f2))
+
+(* lexicographic comparison:  aaz < ab < aba *)
+   fun less_f_loop (d1, f1, l1, d2, f2, l2) =
+        if f2 > l2 then false		(* second is shorter or same *)
+        else if f1 > l1 then true	(* first is shorter *)
+        else
+         let val v1 = Word8.sub (d1, f1)
+             val v2 = Word8.sub (d2, f2)
+         in v1 < v2 orelse
+            (v1 = v2 andalso
+             less_f_loop (d1, f1 + word_size, l1, d2, f2 + word_size, l2))
+         end
+
+   fun less_f ({data = d1, first = f1, last = l1},
+      	{data = d2, first = f2, last = l2}) =
+        less_f_loop (d1, f1, l1, d2, f2, l2)
+
+   fun less_fb_loop (d1, f1, l1, d2, f2, l2) =
+        if f2 > l2 then false		(* second is shorter or same *)
+        else if f1 > l1 then true	(* first is shorter *)
+        else
+         let val v1 = Word8.sub_big (d1, f1)
+             val v2 = Word8.sub_big (d2, f2)
+         in v1 < v2 orelse
+            (v1 = v2 andalso
+             less_fb_loop (d1, f1 + word_size, l1, d2, f2 + word_size, l2))
+         end
+
+   fun less_fb ({data = d1, first = f1, last = l1},
+      	{data = d2, first = f2, last = l2}) =
+        less_fb_loop (d1, f1, l1, d2, f2, l2)
+
+(* reverse lexicographic comparison:  zaa < ba < aba *)
+   fun less_r_loop (d1, f1, l1, d2, f2, l2) =
+        if f2 > l2 then false		(* second is shorter or same *)
+        else if f1 > l1 then true	(* first is shorter *)
+        else
+         let val v1 = Word8.sub (d1, l1)
+             val v2 = Word8.sub (d2, l2)
+         in v1 < v2 orelse
+            (v1 = v2 andalso
+             less_r_loop (d1, f1, l1 - word_size, d2, f2, l2 - word_size))
+         end
+
+   fun less_r ({data = d1, first = f1, last = l1},
+      	{data = d2, first = f2, last = l2}) =
+        less_r_loop (d1, f1, l1, d2, f2, l2)
+
+   fun less_rb_loop (d1, f1, l1, d2, f2, l2) =
+        if f2 > l2 then false		(* second is shorter or same *)
+        else if f1 > l1 then true	(* first is shorter *)
+        else
+         let val v1 = Word8.sub (d1, l1)
+             val v2 = Word8.sub (d2, l2)
+         in v1 < v2 orelse
+            (v1 = v2 andalso
+             less_rb_loop (d1, f1, l1 - word_size, d2, f2, l2 - word_size))
+         end
+
+   fun less_rb ({data = d1, first = f1, last = l1},
+      	  {data = d2, first = f2, last = l2}) =
+        less_rb_loop (d1, f1, l1, d2, f2, l2)
+
+
+   fun filter_f filter =
+        let fun f NONE = NONE
+      	| f (SOME (first, rest)) =
+                 case filter first of
+      	      NONE => f (next_f rest)
+      	    | SOME value => SOME (value, next_f rest)
+        in (new_f f) o next_f
+        end
+
+   fun filter_r filter =
+        let fun f NONE = NONE
+      	| f (SOME (first, rest)) =
+                 case filter first of
+      	      NONE => f (next_r rest)
+      	    | SOME value => SOME (value, next_r rest)
+        in (new_r f) o next_r
+        end
+
+   fun append ({data = d1, first = f1, last = l1},
+      	 {data = d2, first = f2, last = l2}) =
+        let val size = l1 - f1 + l2 - f2 + word_size + word_size
+            val new = create_array size
+            fun copy1 index =
+                 if index < f1 then ()
+      	   else
+      	    (Word8.update (new, index - f1, Word8.sub (d1, index));
+      	     copy1 (index - word_size))
+            val off2 = f2 - l1 + f1 - word_size
+            fun copy2 index =
+                 if index < f2 then ()
+      	   else
+      	    (Word8.update (new, index - off2, Word8.sub (d2, index));
+      	     copy2 (index - word_size))
+        in copy1 l1;
+           copy2 l2;
+           {data = new, first = 0, last = size - word_size}
+        end
+
+   fun reverse (array as {data, first, last}) =
+        let val delta = last - first
+            val size = delta + word_size
+            val new = create_array size
+            fun copy (read, write) =
+                 if read < first then ()
+      	   else
+      	    (Word8.update (new, write, Word8.sub (data, read));
+      	     copy (read - word_size, write + word_size))
+        in copy (last, 0);
+           {data = new, first = 0, last = delta}
+        end
+
+   fun write (array as {data, first, last: int}) =
+        if first <= last then SOME array else NONE
+
+   fun read array = array
+
+(*
+		12.	structure W8.Native
+*)
+
+  in
+   structure Native =
+    struct
+     type T = T
+     type U = U
+     type element = element
+
+     structure F =
+      struct
+       type T = T
+       type U = U
+       type element = element
+       exception Empty
+       val new = new_f
+       val next = next_f
+       val seek = seek_f
+       val head = head next_f
+       val tail = tail next_f
+       val nth = nth (next_f, seek_f)
+       val isempty = isempty
+       val wait = wait
+       val map = map_f
+       val app = app_f
+       val fold = fold_f
+       val filter = filter_f
+       val create = create
+       val tabulate = tabulate_f
+       val equal = equal
+       val less = less_f
+       val length: (T -> Word.word) = Word.fromInt o length
+       val append = append
+       val reverse = reverse
+       val create_uninitialized = make o Word.toInt
+       val write = write
+       val read = read
+       fun update ({data, first, last}, value) =
+            (Word8.update (data, first, value);
+             if first + word_size > last then NONE
+             else
+              SOME ({data = data, first = first + word_size, last = last}))
+      end
+
+     structure R =
+      struct
+       type T = T
+       type U = U
+       type element = element
+       exception Empty
+       val new = new_r
+       val next = next_r
+       val seek = seek_r
+       val head = head next_r
+       val tail = tail next_r
+       val nth = nth (next_r, seek_r)
+       val isempty = isempty
+       val wait = wait
+       val map = map_r
+       val app = app_r
+       val fold = fold_r
+       val filter = filter_r
+       val create = create
+       val tabulate = tabulate_r
+       val equal = equal
+       val less = less_r
+       val length = F.length
+       val append = append
+       val reverse = reverse
+       val create_uninitialized = F.create_uninitialized
+       val write = write
+       val read = read
+       fun update ({data, first, last}, value) =
+            (Word8.update (data, last, value);
+             if first + word_size > last then NONE
+             else
+              SOME ({data = data, first = first, last = last - word_size}))
+      end
+    end
+  end (* local *)
+
+  structure Little = Native
+  structure Big = Native
+  structure U_Big = Native
+  structure U_Little = Native
+  structure F_Big = Big.F
+  structure R_Big = Big.R
+  structure F_Little = Little.F
+  structure R_Little = Little.R
+
+(*
+		13.	alignment functions
+*)
+
+  val native_big_endian = Word8.bigEndian
+  fun align x = x
+  val align_f = align
+  val align_r = align
+  val unalign = align
+  val unalign_f = align
+  val unalign_r = align
+ end;
+
+(*
+		14.	structure Word_Array_W64
+*)
+
+structure Word_Array_W64 =
+ struct
+
+  type T = {data: Word8Array.array, first: int, last: int}
+  type U = T
+  type element = Word64.word
+  exception Empty
+
+  local
+   val word_size = 8
+
+   val empty_array = Word8Array.array (0, 0w0)
+   fun create_array size =
+        if size <= 0 then empty_array else Unsafe.Word8Array.create size
+
+(* note "last" is negative if count is zero *)
+   fun make count =
+        let val bytes = count * word_size
+            val last = bytes - word_size
+            val result = create_array bytes
+        in {data = result, first = 0, last = last}
+        end
+
+   fun new_f update gen value =
+        let fun eval NONE = []
+      	| eval (SOME (element, rest)) = element :: eval (gen rest)
+            val values = eval (gen value)
+            val bytes = List.length values * word_size
+            val last = bytes - word_size
+            val data = create_array bytes
+            fun loop (_, []) = ()
+      	| loop (index, first :: rest) =
+                 (update (data, index, first);
+      	    loop (index + word_size, rest))
+        in loop (0, values);
+           {data = data, first = 0, last = last}
+        end
+
+   fun new_r update gen value =
+        let fun eval NONE = []
+      	| eval (SOME (element, rest)) = element :: eval (gen rest)
+            val values = eval (gen value)
+            val bytes = List.length values * word_size
+            val last = bytes - word_size
+            val data = create_array bytes
+            fun loop (_, []) = ()
+      	| loop (index, first :: rest) =
+                 (update (data, index, first);
+      	    loop (index - word_size, rest))
+        in loop (last, values);
+           {data = data, first = 0, last = last}
+        end
+
+   fun create update (value, count) =
+        let val bytes = Word.toInt count * word_size
+            val last = bytes - word_size
+            val data = create_array bytes
+            fun loop index =
+                 if index < 0 then ()
+      	   else
+      	    (update (data, index, value);
+      	     loop (index - word_size))
+        in loop last;
+           {data = data, first = 0, last = last}
+        end
+
+   fun tabulate_f update (values, count) =
+        let val bytes = Word.toInt count * word_size
+            val last = bytes - word_size
+            val data = create_array bytes
+            fun loop (index, byte_index) =
+      	         if index >= count then ()
+		 else
+		  (update (data, byte_index, values index);
+		   loop (index + 0w1, byte_index + word_size))
+        in loop (0w0, 0);
+           {data = data, first = 0, last = last}
+        end
+
+   fun tabulate_r update (values, count) =
+        let val bytes = Word.toInt count * word_size
+            val last = bytes - word_size
+	    val data = create_array bytes
+	    fun loop (index, byte_index) =
+      	         if index >= count then ()
+		 else
+		  (update (data, byte_index, values index);
+		   loop (index + 0w1, byte_index - word_size))
+          in loop (0w0, last);
+             {data = data, first = 0, last = last}
+          end
+
+   fun next_f sub {data, first, last} =
+        if first > last then NONE
+        else SOME (sub (data, first),
+      	     {data = data, first = first + word_size, last = last})
+
+   fun next_r sub {data, first, last} =
+        if first > last then NONE
+        else SOME (sub (data, last),
+      	     {data = data, first = first, last = last - word_size})
+
+   fun head next array =
+        case next array of
+           NONE => raise Empty
+         | SOME (head, _) => head
+
+   fun tail next array =
+        case next array of
+           NONE => raise Empty
+         | SOME (_, tail) => tail
+
+   fun seek_f ({data, first, last}, count) =
+        {data = data, first = first + word_size * Word.toInt count,
+           last = last}
+
+   fun seek_r ({data, first, last}, count) =
+        {data = data, first = first,
+         last = last - word_size * Word.toInt count}
+
+   fun nth (next, seek) arg =
+        case next (seek arg) of
+           NONE => raise Empty
+         | SOME (head, _) => head
+
+   fun isempty {data, first: int, last} = first > last
+
+   fun wait _ = ()
+
+   fun length {data, first, last} =
+        Int.max ((last - first) div word_size + 1, 0)
+
+   fun map_f (sub, update) map {data, first, last} =
+        let val bytes = Int.max (last - first + word_size, 0)
+            val new = create_array bytes
+            fun loop index =
+                 if index >= bytes then ()
+		 else
+		  (update (new, index, map (sub (data, index + first)));
+		   loop (index + word_size))
+        in loop 0;
+           {data = new, first = 0, last = bytes - word_size}
+        end
+
+   fun map_r (sub, update) map {data, first, last} =
+        let val bytes = Int.max (last - first + word_size, 0)
+            val new = create_array bytes
+	    val new_last = bytes - word_size
+            fun loop index =
+                 if index < 0 then ()
+		 else
+		  (update (new, index, map (sub (data, index + first)));
+		   loop (index - word_size))
+        in loop new_last;
+           {data = new, first = 0, last = new_last}
+        end
+
+   fun app_f sub app {data, first, last} =
+        let fun loop index =
+                 if index > last then ()
+      	   else
+      	    (app (sub (data, index));
+      	     loop (index + word_size))
+        in loop first
+        end
+
+   fun app_r sub app {data, first, last} =
+        let fun loop index =
+                 if index < first then ()
+      	   else
+      	    (app (sub (data, index));
+      	     loop (index - word_size))
+        in loop last
+        end
+
+   fun fold_f sub fold init {data, first, last} =
+        let fun loop (index, value) =
+                 if index > last then value
+      	   else
+      	    loop (index + word_size, fold (sub (data, index), value))
+        in loop (first, init)
+        end
+
+   fun fold_r sub fold init {data, first, last} =
+        let fun loop (index, value) =
+                 if index < first then value
+      	   else
+      	    loop (index - word_size, fold (sub (data, index), value))
+        in loop (last, init)
+        end
+
+   fun equal_loop (d1, i1, 0, d2, i2) = true
+     | equal_loop (d1, i1, bytes, d2, i2) =
+        Word64.sub (d1, i1) = Word64.sub (d2, i2) andalso
+        equal_loop (d1, i1 + word_size, bytes - word_size,
+      	      d2, i2 + word_size)
+
+   fun equal ({data = d1, first = f1, last = l1},
+	      {data = d2, first = f2, last = l2}) =
+        (l1 < f1 andalso l2 < f2) orelse
+	(l1 - f1 = l2 - f2 andalso equal_loop (d1, f1, l1 - f1, d2, f2))
+
+(* lexicographic comparison:  aaz < ab < aba *)
+   fun less_f_loop (sub, d1, f1, l1, d2, f2, l2) =
+        if f2 > l2 then false		(* second is shorter or same *)
+        else if f1 > l1 then true	(* first is shorter *)
+        else
+         let val v1 = sub (d1, f1)
+             val v2 = sub (d2, f2)
+         in Word64.< (v1, v2) orelse
+            (v1 = v2 andalso
+             less_f_loop (sub, d1, f1 + word_size, l1,
+      		    d2, f2 + word_size, l2))
+         end
+
+   fun less_f sub ({data = d1, first = f1, last = l1},
+      	     {data = d2, first = f2, last = l2}) =
+        less_f_loop (sub, d1, f1, l1, d2, f2, l2)
+
+(* reverse lexicographic comparison:  zaa < ba < aba *)
+   fun less_r_loop (sub, d1, f1, l1, d2, f2, l2) =
+        if f2 > l2 then false		(* second is shorter or same *)
+        else if f1 > l1 then true	(* first is shorter *)
+        else
+         let val v1 = sub (d1, l1)
+             val v2 = sub (d2, l2)
+         in Word64.< (v1, v2) orelse
+            (v1 = v2 andalso
+             less_r_loop (sub, d1, f1, l1 - word_size,
+      		    d2, f2, l2 - word_size))
+         end
+
+   fun less_r sub ({data = d1, first = f1, last = l1},
+      	     {data = d2, first = f2, last = l2}) =
+        less_r_loop (sub, d1, f1, l1, d2, f2, l2)
+
+   fun filter_f (new, next) filter =
+        let fun f NONE = NONE
+      	| f (SOME (first, rest)) =
+                 case filter first of
+      	      NONE => f (next rest)
+      	    | SOME value => SOME (value, next rest)
+        in (new f) o next
+        end
+
+   fun filter_r (new, next) filter =
+        let fun f NONE = NONE
+      	| f (SOME (first, rest)) =
+                 case filter first of
+      	      NONE => f (next rest)
+      	    | SOME value => SOME (value, next rest)
+        in (new f) o next
+        end
+
+   fun append ({data = d1, first = f1, last = l1},
+      	 {data = d2, first = f2, last = l2}) =
+        let val size = l1 - f1 + l2 - f2 + word_size + word_size
+            val new = create_array size
+            fun copy1 index =
+                 if index < f1 then ()
+      	   else
+      	    (Word64.update (new, index - f1, Word64.sub (d1, index));
+      	     copy1 (index - word_size))
+            val off2 = f2 - l1 + f1 - word_size
+            fun copy2 index =
+                 if index < f2 then ()
+      	   else
+      	    (Word64.update (new, index - off2, Word64.sub (d2, index));
+      	     copy2 (index - word_size))
+        in copy1 l1;
+           copy2 l2;
+           {data = new, first = 0, last = size - word_size}
+        end
+
+   fun reverse (array as {data, first, last}) =
+        let val delta = last - first
+            val size = delta + word_size
+            val new = create_array size
+            fun copy (read, write) =
+                 if read < first then ()
+      	   else
+      	    (Word64.update (new, write, Word64.sub (data, read));
+      	     copy (read - word_size, write + word_size))
+        in copy (last, 0);
+           {data = new, first = 0, last = delta}
+        end
+
+   fun write (array as {data, first, last: int}) =
+        if first <= last then SOME array else NONE
+
+   fun read array = array
+
+(*
+		15.	structure W64.Native
+*)
+
+  in
+   structure Native =
+    struct
+     type T = T
+     type U = U
+     type element = element
+
+     structure F =
+      struct
+       type T = T
+       type U = U
+       type element = element
+       exception Empty
+       fun new f = new_f Word64.update f
+       val next = next_f Word64.sub
+       val seek = seek_f
+       val head = head next
+       val tail = tail next
+       val nth = nth (next, seek)
+       val isempty = isempty
+       val wait = wait
+       val map = map_f (Word64.sub, Word64.update)
+       fun app f v = app_f Word64.sub f v
+       fun fold f init v = fold_f Word64.sub f init v
+       val filter = filter_f (new, next)
+       val create = create Word64.update
+       val tabulate = tabulate_f Word64.update
+       val equal = equal
+       val less = less_f Word64.sub
+       val length: (T -> Word.word) = Word.fromInt o length
+       val append = append
+       val reverse = reverse
+       val create_uninitialized = make o Word.toInt
+       val write = write
+       val read = read
+       fun update ({data, first, last}, value) =
+            (Word64.update (data, first, value);
+             if first + word_size > last then NONE
+             else
+              SOME ({data = data, first = first + word_size, last = last}))
+      end
+
+     structure R =
+      struct
+       type T = T
+       type U = U
+       type element = element
+       exception Empty
+       fun new f = new_r Word64.update f
+       val next = next_r Word64.sub
+       val seek = seek_r
+       val head = head next
+       val tail = tail next
+       val nth = nth (next, seek)
+       val isempty = isempty
+       val wait = wait
+       val map = map_r (Word64.sub, Word64.update)
+       fun app f v = app_r Word64.sub f v
+       fun fold f init v = fold_r Word64.sub f init v
+       val filter = filter_r (new, next)
+       val create = create Word64.update
+       val tabulate = tabulate_r Word64.update
+       val equal = equal
+       val less = less_r Word64.sub
+       val length: (T -> Word.word) = Word.fromInt o length
+       val append = append
+       val reverse = reverse
+       val create_uninitialized = make o Word.toInt
+       val write = write
+       val read = read
+       fun update ({data, first, last}, value) =
+            (Word64.update (data, last, value);
+             if first + word_size > last then NONE
+             else
+              SOME ({data = data, first = first, last = last - word_size}))
+      end
+    end
+
+   exception Assumed_Wrong_Endianness_In_Word_Array
+   val _ = if Word64.bigEndian then
+            raise Assumed_Wrong_Endianness_In_Word_Array
+           else ()
+   structure Little = Native
+
+(*
+		16.	structure W64.Big
+*)
+
+   structure Big =
+    struct
+     type T = T
+     type U = U
+     type element = element
+
+     structure F =
+      struct
+       type T = T
+       type U = U
+       type element = element
+       exception Empty
+       fun new f = new_f Word64.update_big f
+       val next = next_f Word64.sub_big
+       val seek = seek_f
+       val head = head next
+       val tail = tail next
+       val nth = nth (next, seek)
+       val isempty = isempty
+       val wait = wait
+       val map = map_f (Word64.sub_big, Word64.update_big)
+       fun app f v = app_f Word64.sub_big f v
+       fun fold f init v = fold_f Word64.sub_big f init v
+       val filter = filter_f (new, next)
+       val create = create Word64.update_big
+       val tabulate = tabulate_f Word64.update_big
+       val equal = equal
+       val less = less_f Word64.sub_big
+       val length: (T -> Word.word) = Word.fromInt o length
+       val append = append
+       val reverse = reverse
+       val create_uninitialized = make o Word.toInt
+       val write = write
+       val read = read
+       fun update ({data, first, last}, value) =
+            (Word64.update_big (data, first, value);
+             if first + word_size > last then NONE
+             else
+              SOME ({data = data, first = first + word_size, last = last}))
+      end
+
+     structure R =
+      struct
+       type T = T
+       type U = U
+       type element = element
+       exception Empty
+       fun new f = new_r Word64.update_big f
+       val next = next_r Word64.sub_big
+       val seek = seek_r
+       val head = head next
+       val tail = tail next
+       val nth = nth (next, seek)
+       val isempty = isempty
+       val wait = wait
+       val map = map_r (Word64.sub_big, Word64.update_big)
+       fun app f v = app_r Word64.sub_big f v
+       fun fold f init v = fold_r Word64.sub_big f init v
+       val filter = filter_r (new, next)
+       val create = create Word64.update_big
+       val tabulate = tabulate_r Word64.update_big
+       val equal = equal
+       val less = less_r Word64.sub_big
+       val length = Native.F.length
+       val append = append
+       val reverse = reverse
+       val create_uninitialized = make o Word.toInt
+       val write = write
+       val read = read
+       fun update ({data, first, last}, value) =
+            (Word64.update_big (data, last, value);
+             if first + word_size > last then NONE
+             else
+              SOME ({data = data, first = first, last = last - word_size}))
+      end
+    end
+
+(*
+		17.	structure W64.U_Big/Little
+
+ The unaligned-access structures which follow are not highly
+ optimized.  In theory, if you want high performance, you should use
+ the aligned accesses.
+*)
+
+   local
+    fun get_data (array, index) =
+         let fun tabulate i = Word8Array.sub (array, index + i)
+         in Word8Array.tabulate (word_size, tabulate)
+         end
+
+    fun put_data (update, (array, index, value)) =
+         let val data = create_array word_size
+             fun copy 0 =
+      	    Word8Array.update (array, index, Word8Array.sub (data, 0))
+      	 | copy i =
+      	    (Word8Array.update (array, index + i,
+      				Word8Array.sub (data, i));
+      	     copy (i - 1))
+         in update (data, 0, value);
+            copy (word_size - 1)
+         end
+
+    fun sub_big arg = Word64.sub_big (get_data arg, 0)
+    fun sub_little arg = Word64.sub_little (get_data arg, 0)
+
+    fun update_big arg = put_data (Word64.update_big, arg)
+    fun update_little arg = put_data (Word64.update_little, arg)
+
+    fun append_u (new, next) (a1, a2) =
+         let fun result (NONE, NONE) = NONE
+      	 | result (NONE, SOME (element, next_array)) =
+                  SOME (element, (NONE, next next_array))
+      	 | result (SOME (element, next_array), rest) =
+                  SOME (element, (next next_array, rest))
+         in new result (next a1, next a2)
+         end
+
+    fun reverse_uf (tabulate, sub) (array as {data, first, last}) =
+         let val length = Word.fromInt (length array)
+	     fun get index = sub (data, last - Word.toInt index * word_size)
+	 in tabulate (get, length)
+	 end
+
+   in
+    structure U_Big =
+     struct
+      type T = T
+      type U = U
+      type element = element
+
+      structure F =
+       struct
+        type T = T
+        type U = U
+        type element = element
+        exception Empty
+        val new = Big.F.new
+        val next = next_f sub_big
+        val seek = seek_f
+        val head = head next
+        val tail = tail next
+        val nth = nth (next, seek)
+        val isempty = isempty
+        val wait = wait
+        val map = map_f (sub_big, update_big)
+        fun app f v = app_f sub_big f v
+        fun fold f init v = fold_f sub_big f init v
+        val filter = filter_f (new, next)
+        val create = create update_big
+        val tabulate = tabulate_f update_big
+        val equal = equal
+        val less = less_f sub_big
+        val length = Native.F.length
+        val append = append_u (new, next)
+        val reverse = reverse_uf (tabulate, sub_big)
+        val create_uninitialized = Native.F.create_uninitialized
+        val write = write
+        val read = read
+        fun update ({data, first, last}, value) =
+             (update_big (data, first, value);
+      	if first + word_size > last then NONE
+      	else
+      	 SOME {data = data, first = first + word_size, last = last})
+       end
+
+      structure R =
+       struct
+        type T = T
+        type U = U
+        type element = element
+        exception Empty
+        val new = Big.R.new
+        val next = next_r sub_big
+        val seek = seek_r
+        val head = head next
+        val tail = tail next
+        val nth = nth (next, seek)
+        val isempty = isempty
+        val wait = wait
+        val map = map_r (sub_big, update_big)
+        fun app f v = app_r sub_big f v
+        fun fold f init v = fold_r sub_big f init v
+        val filter = filter_r (new, next)
+        val create = create update_big
+        val tabulate = tabulate_r update_big
+        val equal = equal
+        val less = less_r sub_big
+        val length = Native.F.length
+        val append = append_u (new, next)
+        val reverse = F.reverse
+        val create_uninitialized = Native.F.create_uninitialized
+        val write = write
+        val read = read
+        fun update ({data, first, last}, value) =
+             (update_big (data, last, value);
+      	if first + word_size > last then NONE
+      	else
+      	 SOME {data = data, first = first, last = last - word_size})
+       end
+     end
+
+    structure U_Little =
+     struct
+      type T = T
+      type U = U
+      type element = element
+
+      structure F =
+       struct
+        type T = T
+        type U = U
+        type element = element
+        exception Empty
+        val new = Little.F.new
+        val next = next_f sub_little
+        val seek = seek_f
+        val head = head next
+        val tail = tail next
+        val nth = nth (next, seek)
+        val isempty = isempty
+        val wait = wait
+        val map = map_f (sub_little, update_little)
+        fun app f v = app_f sub_little f v
+        fun fold f init v = fold_f sub_little f init v
+        val filter = filter_f (new, next)
+        val create = create update_little
+        val tabulate = tabulate_f update_little
+        val equal = equal
+        val less = less_f sub_little
+        val length = Native.F.length
+        val append = append_u (new, next)
+        val reverse = reverse_uf (tabulate, sub_little)
+        val create_uninitialized = Native.F.create_uninitialized
+        val write = write
+        val read = read
+        fun update ({data, first, last}, value) =
+             (update_little (data, first, value);
+      	if first + word_size > last then NONE
+      	else
+      	 SOME {data = data, first = first + word_size, last = last})
+       end
+
+      structure R =
+       struct
+        type T = T
+        type U = U
+        type element = element
+        exception Empty
+        val new = Little.R.new
+        val next = next_r sub_little
+        val seek = seek_r
+        val head = head next
+        val tail = tail next
+        val nth = nth (next, seek)
+        val isempty = isempty
+        val wait = wait
+        val map = map_r (sub_little, update_little)
+        fun app f v = app_r sub_little f v
+        fun fold f init v = fold_r sub_little f init v
+        val filter = filter_r (new, next)
+        val create = create update_little
+        val tabulate = tabulate_r update_little
+        val equal = equal
+        val less = less_r sub_little
+        val length = Native.F.length
+        val append = append_u (new, next)
+        val reverse = F.reverse
+        val create_uninitialized = Native.F.create_uninitialized
+        val write = write
+        val read = read
+        fun update ({data, first, last}, value) =
+             (update_little (data, last, value);
+      	if first + word_size > last then NONE
+      	else
+      	 SOME {data = data, first = first, last = last - word_size})
+       end
+     end
+   end (* local *)
+
+   structure F_Big = Big.F
+   structure R_Big = Big.R
+   structure F_Little = Little.F
+   structure R_Little = Little.R
+
+(*
+		18.	alignment functions
+*)
+
+   val native_big_endian = Word64.bigEndian
+
+   local
+    val almost_word = word_size - 1
+    fun modulo n = Bits.andb (n, almost_word)
+   in
+    fun align (array as {data, first, last}) =
+         if modulo first = 0 andalso modulo last = 0 then array
+	 else
+	  let val new_first = first + almost_word
+	  in {data = data, first = new_first - modulo new_first,
+	      last = last - modulo last}
+	  end
+
+    fun align_f (array as {data, first, last}) =
+         if modulo first = 0 then array
+	 else
+	  let val new_first = first + almost_word
+	  in {data = data, first = new_first - modulo new_first, last = last}
+	  end
+
+    fun align_r (array as {data, first, last}) =
+         if modulo last = 0 then array
+         else {data = data, first = first, last = last - modulo last}
+
+    fun unalign x = x
+    val unalign_f = unalign
+    val unalign_r = unalign
+   end
+  end (* local *)
+ end;
+
+(*
+		19.	structure Word_Array_W128
+*)
+
+structure Word_Array_W128 =
+ struct
+
+  type T = {data: Word8Array.array, first: int, last: int}
+  type U = T
+  type element = Word128.word
+  exception Empty
+
+  local
+   val word_size = 16
+
+   val empty_array = Word8Array.array (0, 0w0)
+   fun create_array size =
+        if size <= 0 then empty_array else Unsafe.Word8Array.create size
+
+(* note "last" is negative if count is zero *)
+   fun make count =
+        let val bytes = count * word_size
+            val last = bytes - word_size
+            val result = create_array bytes
+        in {data = result, first = 0, last = last}
+        end
+
+   fun new_f update gen value =
+        let fun eval NONE = []
+      	| eval (SOME (element, rest)) = element :: eval (gen rest)
+            val values = eval (gen value)
+            val bytes = List.length values * word_size
+            val last = bytes - word_size
+            val data = create_array bytes
+            fun loop (_, []) = ()
+      	| loop (index, first :: rest) =
+                 (update (data, index, first);
+      	    loop (index + word_size, rest))
+        in loop (0, values);
+           {data = data, first = 0, last = last}
+        end
+
+   fun new_r update gen value =
+        let fun eval NONE = []
+      	| eval (SOME (element, rest)) = element :: eval (gen rest)
+            val values = eval (gen value)
+            val bytes = List.length values * word_size
+            val last = bytes - word_size
+            val data = create_array bytes
+            fun loop (_, []) = ()
+      	| loop (index, first :: rest) =
+                 (update (data, index, first);
+      	    loop (index - word_size, rest))
+        in loop (last, values);
+           {data = data, first = 0, last = last}
+        end
+
+   fun create update (value, count) =
+        let val bytes = Word.toInt count * word_size
+            val last = bytes - word_size
+            val data = create_array bytes
+            fun loop index =
+                 if index < 0 then ()
+      	   else
+      	    (update (data, index, value);
+      	     loop (index - word_size))
+        in loop last;
+           {data = data, first = 0, last = last}
+        end
+
+   fun tabulate_f update (values, count) =
+        let val bytes = Word.toInt count * word_size
+            val last = bytes - word_size
+            val data = create_array bytes
+            fun loop (index, byte_index) =
+      	         if index >= count then ()
+		 else
+		  (update (data, byte_index, values index);
+		   loop (index + 0w1, byte_index + word_size))
+        in loop (0w0, 0);
+           {data = data, first = 0, last = last}
+        end
+
+   fun tabulate_r update (values, count) =
+        let val bytes = Word.toInt count * word_size
+            val last = bytes - word_size
+	    val data = create_array bytes
+	    fun loop (index, byte_index) =
+      	         if index >= count then ()
+		 else
+		  (update (data, byte_index, values index);
+		   loop (index + 0w1, byte_index - word_size))
+          in loop (0w0, last);
+             {data = data, first = 0, last = last}
+          end
+
+   fun next_f sub {data, first, last} =
+        if first > last then NONE
+        else SOME (sub (data, first),
+      	     {data = data, first = first + word_size, last = last})
+
+   fun next_r sub {data, first, last} =
+        if first > last then NONE
+        else SOME (sub (data, last),
+      	     {data = data, first = first, last = last - word_size})
+
+   fun head next array =
+        case next array of
+           NONE => raise Empty
+         | SOME (head, _) => head
+
+   fun tail next array =
+        case next array of
+           NONE => raise Empty
+         | SOME (_, tail) => tail
+
+   fun seek_f ({data, first, last}, count) =
+        {data = data, first = first + word_size * Word.toInt count,
+           last = last}
+
+   fun seek_r ({data, first, last}, count) =
+        {data = data, first = first,
+         last = last - word_size * Word.toInt count}
+
+   fun nth (next, seek) arg =
+        case next (seek arg) of
+           NONE => raise Empty
+         | SOME (head, _) => head
+
+   fun isempty {data, first: int, last} = first > last
+
+   fun wait _ = ()
+
+   fun length {data, first, last} =
+        Int.max ((last - first) div word_size + 1, 0)
+
+   fun map_f (sub, update) map {data, first, last} =
+        let val bytes = Int.max (last - first + word_size, 0)
+            val new = create_array bytes
+            fun loop index =
+                 if index >= bytes then ()
+		 else
+		  (update (new, index, map (sub (data, index + first)));
+		   loop (index + word_size))
+        in loop 0;
+           {data = new, first = 0, last = bytes - word_size}
+        end
+
+   fun map_r (sub, update) map {data, first, last} =
+        let val bytes = Int.max (last - first + word_size, 0)
+            val new = create_array bytes
+	    val new_last = bytes - word_size
+            fun loop index =
+                 if index < 0 then ()
+		 else
+		  (update (new, index, map (sub (data, index + first)));
+		   loop (index - word_size))
+        in loop new_last;
+           {data = new, first = 0, last = new_last}
+        end
+
+   fun app_f sub app {data, first, last} =
+        let fun loop index =
+                 if index > last then ()
+      	   else
+      	    (app (sub (data, index));
+      	     loop (index + word_size))
+        in loop first
+        end
+
+   fun app_r sub app {data, first, last} =
+        let fun loop index =
+                 if index < first then ()
+      	   else
+      	    (app (sub (data, index));
+      	     loop (index - word_size))
+        in loop last
+        end
+
+   fun fold_f sub fold init {data, first, last} =
+        let fun loop (index, value) =
+                 if index > last then value
+      	   else
+      	    loop (index + word_size, fold (sub (data, index), value))
+        in loop (first, init)
+        end
+
+   fun fold_r sub fold init {data, first, last} =
+        let fun loop (index, value) =
+                 if index < first then value
+      	   else
+      	    loop (index - word_size, fold (sub (data, index), value))
+        in loop (last, init)
+        end
+
+   fun equal_loop (d1, i1, 0, d2, i2) = true
+     | equal_loop (d1, i1, bytes, d2, i2) =
+        Word128.sub (d1, i1) = Word128.sub (d2, i2) andalso
+        equal_loop (d1, i1 + word_size, bytes - word_size,
+      	      d2, i2 + word_size)
+
+   fun equal ({data = d1, first = f1, last = l1},
+	      {data = d2, first = f2, last = l2}) =
+        (l1 < f1 andalso l2 < f2) orelse
+	(l1 - f1 = l2 - f2 andalso equal_loop (d1, f1, l1 - f1, d2, f2))
+
+(* lexicographic comparison:  aaz < ab < aba *)
+   fun less_f_loop (sub, d1, f1, l1, d2, f2, l2) =
+        if f2 > l2 then false		(* second is shorter or same *)
+        else if f1 > l1 then true	(* first is shorter *)
+        else
+         let val v1 = sub (d1, f1)
+             val v2 = sub (d2, f2)
+         in Word128.< (v1, v2) orelse
+            (v1 = v2 andalso
+             less_f_loop (sub, d1, f1 + word_size, l1,
+      		    d2, f2 + word_size, l2))
+         end
+
+   fun less_f sub ({data = d1, first = f1, last = l1},
+      	     {data = d2, first = f2, last = l2}) =
+        less_f_loop (sub, d1, f1, l1, d2, f2, l2)
+
+(* reverse lexicographic comparison:  zaa < ba < aba *)
+   fun less_r_loop (sub, d1, f1, l1, d2, f2, l2) =
+        if f2 > l2 then false		(* second is shorter or same *)
+        else if f1 > l1 then true	(* first is shorter *)
+        else
+         let val v1 = sub (d1, l1)
+             val v2 = sub (d2, l2)
+         in Word128.< (v1, v2) orelse
+            (v1 = v2 andalso
+             less_r_loop (sub, d1, f1, l1 - word_size,
+      		    d2, f2, l2 - word_size))
+         end
+
+   fun less_r sub ({data = d1, first = f1, last = l1},
+      	     {data = d2, first = f2, last = l2}) =
+        less_r_loop (sub, d1, f1, l1, d2, f2, l2)
+
+   fun filter_f (new, next) filter =
+        let fun f NONE = NONE
+      	| f (SOME (first, rest)) =
+                 case filter first of
+      	      NONE => f (next rest)
+      	    | SOME value => SOME (value, next rest)
+        in (new f) o next
+        end
+
+   fun filter_r (new, next) filter =
+        let fun f NONE = NONE
+      	| f (SOME (first, rest)) =
+                 case filter first of
+      	      NONE => f (next rest)
+      	    | SOME value => SOME (value, next rest)
+        in (new f) o next
+        end
+
+   fun append ({data = d1, first = f1, last = l1},
+      	 {data = d2, first = f2, last = l2}) =
+        let val size = l1 - f1 + l2 - f2 + word_size + word_size
+            val new = create_array size
+            fun copy1 index =
+                 if index < f1 then ()
+      	   else
+      	    (Word128.update (new, index - f1, Word128.sub (d1, index));
+      	     copy1 (index - word_size))
+            val off2 = f2 - l1 + f1 - word_size
+            fun copy2 index =
+                 if index < f2 then ()
+      	   else
+      	    (Word128.update (new, index - off2, Word128.sub (d2, index));
+      	     copy2 (index - word_size))
+        in copy1 l1;
+           copy2 l2;
+           {data = new, first = 0, last = size - word_size}
+        end
+
+   fun reverse (array as {data, first, last}) =
+        let val delta = last - first
+            val size = delta + word_size
+            val new = create_array size
+            fun copy (read, write) =
+                 if read < first then ()
+      	   else
+      	    (Word128.update (new, write, Word128.sub (data, read));
+      	     copy (read - word_size, write + word_size))
+        in copy (last, 0);
+           {data = new, first = 0, last = delta}
+        end
+
+   fun write (array as {data, first, last: int}) =
+        if first <= last then SOME array else NONE
+
+   fun read array = array
+
+(*
+		20.	structure W128.Native
+*)
+
+  in
+   structure Native =
+    struct
+     type T = T
+     type U = U
+     type element = element
+
+     structure F =
+      struct
+       type T = T
+       type U = U
+       type element = element
+       exception Empty
+       fun new f = new_f Word128.update f
+       val next = next_f Word128.sub
+       val seek = seek_f
+       val head = head next
+       val tail = tail next
+       val nth = nth (next, seek)
+       val isempty = isempty
+       val wait = wait
+       val map = map_f (Word128.sub, Word128.update)
+       fun app f v = app_f Word128.sub f v
+       fun fold f init v = fold_f Word128.sub f init v
+       val filter = filter_f (new, next)
+       val create = create Word128.update
+       val tabulate = tabulate_f Word128.update
+       val equal = equal
+       val less = less_f Word128.sub
+       val length: (T -> Word.word) = Word.fromInt o length
+       val append = append
+       val reverse = reverse
+       val create_uninitialized = make o Word.toInt
+       val write = write
+       val read = read
+       fun update ({data, first, last}, value) =
+            (Word128.update (data, first, value);
+             if first + word_size > last then NONE
+             else
+              SOME ({data = data, first = first + word_size, last = last}))
+      end
+
+     structure R =
+      struct
+       type T = T
+       type U = U
+       type element = element
+       exception Empty
+       fun new f = new_r Word128.update f
+       val next = next_r Word128.sub
+       val seek = seek_r
+       val head = head next
+       val tail = tail next
+       val nth = nth (next, seek)
+       val isempty = isempty
+       val wait = wait
+       val map = map_r (Word128.sub, Word128.update)
+       fun app f v = app_r Word128.sub f v
+       fun fold f init v = fold_r Word128.sub f init v
+       val filter = filter_r (new, next)
+       val create = create Word128.update
+       val tabulate = tabulate_r Word128.update
+       val equal = equal
+       val less = less_r Word128.sub
+       val length: (T -> Word.word) = Word.fromInt o length
+       val append = append
+       val reverse = reverse
+       val create_uninitialized = make o Word.toInt
+       val write = write
+       val read = read
+       fun update ({data, first, last}, value) =
+            (Word128.update (data, last, value);
+             if first + word_size > last then NONE
+             else
+              SOME ({data = data, first = first, last = last - word_size}))
+      end
+    end
+
+   exception Assumed_Wrong_Endianness_In_Word_Array
+   val _ = if Word128.bigEndian then
+            raise Assumed_Wrong_Endianness_In_Word_Array
+           else ()
+   structure Little = Native
+
+(*
+		21.	structure W128.Big
+*)
+
+   structure Big =
+    struct
+     type T = T
+     type U = U
+     type element = element
+
+     structure F =
+      struct
+       type T = T
+       type U = U
+       type element = element
+       exception Empty
+       fun new f = new_f Word128.update_big f
+       val next = next_f Word128.sub_big
+       val seek = seek_f
+       val head = head next
+       val tail = tail next
+       val nth = nth (next, seek)
+       val isempty = isempty
+       val wait = wait
+       val map = map_f (Word128.sub_big, Word128.update_big)
+       fun app f v = app_f Word128.sub_big f v
+       fun fold f init v = fold_f Word128.sub_big f init v
+       val filter = filter_f (new, next)
+       val create = create Word128.update_big
+       val tabulate = tabulate_f Word128.update_big
+       val equal = equal
+       val less = less_f Word128.sub_big
+       val length: (T -> Word.word) = Word.fromInt o length
+       val append = append
+       val reverse = reverse
+       val create_uninitialized = make o Word.toInt
+       val write = write
+       val read = read
+       fun update ({data, first, last}, value) =
+            (Word128.update_big (data, first, value);
+             if first + word_size > last then NONE
+             else
+              SOME ({data = data, first = first + word_size, last = last}))
+      end
+
+     structure R =
+      struct
+       type T = T
+       type U = U
+       type element = element
+       exception Empty
+       fun new f = new_r Word128.update_big f
+       val next = next_r Word128.sub_big
+       val seek = seek_r
+       val head = head next
+       val tail = tail next
+       val nth = nth (next, seek)
+       val isempty = isempty
+       val wait = wait
+       val map = map_r (Word128.sub_big, Word128.update_big)
+       fun app f v = app_r Word128.sub_big f v
+       fun fold f v = fold_r Word128.sub_big f v
+       val filter = filter_r (new, next)
+       val create = create Word128.update_big
+       val tabulate = tabulate_r Word128.update_big
+       val equal = equal
+       val less = less_r Word128.sub_big
+       val length = Native.F.length
+       val append = append
+       val reverse = reverse
+       val create_uninitialized = make o Word.toInt
+       val write = write
+       val read = read
+       fun update ({data, first, last}, value) =
+            (Word128.update_big (data, last, value);
+             if first + word_size > last then NONE
+             else
+              SOME ({data = data, first = first, last = last - word_size}))
+      end
+    end
+
+(*
+		22.	structure W128.U_Big/Little
+
+ The unaligned-access structures which follow are not highly
+ optimized.  In theory, if you want high performance, you should use
+ the aligned accesses.
+*)
+
+   local
+    fun get_data (array, index) =
+         let fun tabulate i = Word8Array.sub (array, index + i)
+         in Word8Array.tabulate (word_size, tabulate)
+         end
+
+    fun put_data (update, (array, index, value)) =
+         let val data = create_array word_size
+             fun copy 0 =
+      	    Word8Array.update (array, index, Word8Array.sub (data, 0))
+      	 | copy i =
+      	    (Word8Array.update (array, index + i,
+      				Word8Array.sub (data, i));
+      	     copy (i - 1))
+         in update (data, 0, value);
+            copy (word_size - 1)
+         end
+
+    fun sub_big arg = Word128.sub_big (get_data arg, 0)
+    fun sub_little arg = Word128.sub_little (get_data arg, 0)
+
+    fun update_big arg = put_data (Word128.update_big, arg)
+    fun update_little arg = put_data (Word128.update_little, arg)
+
+    fun append_u (new, next) (a1, a2) =
+         let fun result (NONE, NONE) = NONE
+      	 | result (NONE, SOME (element, next_array)) =
+                  SOME (element, (NONE, next next_array))
+      	 | result (SOME (element, next_array), rest) =
+                  SOME (element, (next next_array, rest))
+         in new result (next a1, next a2)
+         end
+
+    fun reverse_uf (tabulate, sub) (array as {data, first, last}) =
+         let val length = Word.fromInt (length array)
+	     fun get index = sub (data, last - Word.toInt index * word_size)
+	 in tabulate (get, length)
+	 end
+
+   in
+    structure U_Big =
+     struct
+      type T = T
+      type U = U
+      type element = element
+
+      structure F =
+       struct
+        type T = T
+        type U = U
+        type element = element
+        exception Empty
+        val new = Big.F.new
+        val next = next_f sub_big
+        val seek = seek_f
+        val head = head next
+        val tail = tail next
+        val nth = nth (next, seek)
+        val isempty = isempty
+        val wait = wait
+        val map = map_f (sub_big, update_big)
+        fun app f v = app_f sub_big f v
+        fun fold f init v = fold_f sub_big f init v
+        val filter = filter_f (new, next)
+        val create = create update_big
+        val tabulate = tabulate_f update_big
+        val equal = equal
+        val less = less_f sub_big
+        val length = Native.F.length
+        val append = append_u (new, next)
+        val reverse = reverse_uf (tabulate, sub_big)
+        val create_uninitialized = Native.F.create_uninitialized
+        val write = write
+        val read = read
+        fun update ({data, first, last}, value) =
+             (update_big (data, first, value);
+      	if first + word_size > last then NONE
+      	else
+      	 SOME {data = data, first = first + word_size, last = last})
+       end
+
+      structure R =
+       struct
+        type T = T
+        type U = U
+        type element = element
+        exception Empty
+        val new = Big.R.new
+        val next = next_r sub_big
+        val seek = seek_r
+        val head = head next
+        val tail = tail next
+        val nth = nth (next, seek)
+        val isempty = isempty
+        val wait = wait
+        val map = map_r (sub_big, update_big)
+        fun app f v = app_r sub_big f v
+        fun fold f init v = fold_r sub_big f init v
+        val filter = filter_r (new, next)
+        val create = create update_big
+        val tabulate = tabulate_r update_big
+        val equal = equal
+        val less = less_r sub_big
+        val length = Native.F.length
+        val append = append_u (new, next)
+        val reverse = F.reverse
+        val create_uninitialized = Native.F.create_uninitialized
+        val write = write
+        val read = read
+        fun update ({data, first, last}, value) =
+             (update_big (data, last, value);
+      	if first + word_size > last then NONE
+      	else
+      	 SOME {data = data, first = first, last = last - word_size})
+       end
+     end
+
+    structure U_Little =
+     struct
+      type T = T
+      type U = U
+      type element = element
+
+      structure F =
+       struct
+        type T = T
+        type U = U
+        type element = element
+        exception Empty
+        val new = Little.F.new
+        val next = next_f sub_little
+        val seek = seek_f
+        val head = head next
+        val tail = tail next
+        val nth = nth (next, seek)
+        val isempty = isempty
+        val wait = wait
+        val map = map_f (sub_little, update_little)
+        fun app f v = app_f sub_little f v
+        fun fold f init v = fold_f sub_little f init v
+        val filter = filter_f (new, next)
+        val create = create update_little
+        val tabulate = tabulate_f update_little
+        val equal = equal
+        val less = less_f sub_little
+        val length = Native.F.length
+        val append = append_u (new, next)
+        val reverse = reverse_uf (tabulate, sub_little)
+        val create_uninitialized = Native.F.create_uninitialized
+        val write = write
+        val read = read
+        fun update ({data, first, last}, value) =
+             (update_little (data, first, value);
+      	if first + word_size > last then NONE
+      	else
+      	 SOME {data = data, first = first + word_size, last = last})
+       end
+
+      structure R =
+       struct
+        type T = T
+        type U = U
+        type element = element
+        exception Empty
+        val new = Little.R.new
+        val next = next_r sub_little
+        val seek = seek_r
+        val head = head next
+        val tail = tail next
+        val nth = nth (next, seek)
+        val isempty = isempty
+        val wait = wait
+        val map = map_r (sub_little, update_little)
+        fun app f v = app_r sub_little f v
+        fun fold f init v = fold_r sub_little f init v
+        val filter = filter_r (new, next)
+        val create = create update_little
+        val tabulate = tabulate_r update_little
+        val equal = equal
+        val less = less_r sub_little
+        val length = Native.F.length
+        val append = append_u (new, next)
+        val reverse = F.reverse
+        val create_uninitialized = Native.F.create_uninitialized
+        val write = write
+        val read = read
+        fun update ({data, first, last}, value) =
+             (update_little (data, last, value);
+      	if first + word_size > last then NONE
+      	else
+      	 SOME {data = data, first = first, last = last - word_size})
+       end
+     end
+   end (* local *)
+
+   structure F_Big = Big.F
+   structure R_Big = Big.R
+   structure F_Little = Little.F
+   structure R_Little = Little.R
+
+(*
+		23.	alignment functions
+*)
+
+   val native_big_endian = Word128.bigEndian
+
+   local
+    val almost_word = word_size - 1
+    fun modulo n = Bits.andb (n, almost_word)
+   in
+    fun align (array as {data, first, last}) =
+         if modulo first = 0 andalso modulo last = 0 then array
+	 else
+	  let val new_first = first + almost_word
+	  in {data = data, first = new_first - modulo new_first,
+	      last = last - modulo last}
+	  end
+
+    fun align_f (array as {data, first, last}) =
+         if modulo first = 0 then array
+	 else
+	  let val new_first = first + almost_word
+	  in {data = data, first = new_first - modulo new_first, last = last}
+	  end
+
+    fun align_r (array as {data, first, last}) =
+         if modulo last = 0 then array
+         else {data = data, first = first, last = last - modulo last}
+
+    fun unalign x = x
+    val unalign_f = unalign
+    val unalign_r = unalign
+   end
+  end (* local *)
+ end;
+
+(*
+		24.	structure Word_Array_W256
+*)
+
+structure Word_Array_W256 =
+ struct
+
+  type T = {data: Word8Array.array, first: int, last: int}
+  type U = T
+  type element = Word256.word
+  exception Empty
+
+  local
+   val word_size = 32
+
+   val empty_array = Word8Array.array (0, 0w0)
+   fun create_array size =
+        if size <= 0 then empty_array else Unsafe.Word8Array.create size
+
+(* note "last" is negative if count is zero *)
+   fun make count =
+        let val bytes = count * word_size
+            val last = bytes - word_size
+            val result = create_array bytes
+        in {data = result, first = 0, last = last}
+        end
+
+   fun new_f update gen value =
+        let fun eval NONE = []
+      	| eval (SOME (element, rest)) = element :: eval (gen rest)
+            val values = eval (gen value)
+            val bytes = List.length values * word_size
+            val last = bytes - word_size
+            val data = create_array bytes
+            fun loop (_, []) = ()
+      	| loop (index, first :: rest) =
+                 (update (data, index, first);
+      	    loop (index + word_size, rest))
+        in loop (0, values);
+           {data = data, first = 0, last = last}
+        end
+
+   fun new_r update gen value =
+        let fun eval NONE = []
+      	| eval (SOME (element, rest)) = element :: eval (gen rest)
+            val values = eval (gen value)
+            val bytes = List.length values * word_size
+            val last = bytes - word_size
+            val data = create_array bytes
+            fun loop (_, []) = ()
+      	| loop (index, first :: rest) =
+                 (update (data, index, first);
+      	    loop (index - word_size, rest))
+        in loop (last, values);
+           {data = data, first = 0, last = last}
+        end
+
+   fun create update (value, count) =
+        let val bytes = Word.toInt count * word_size
+            val last = bytes - word_size
+            val data = create_array bytes
+            fun loop index =
+                 if index < 0 then ()
+      	   else
+      	    (update (data, index, value);
+      	     loop (index - word_size))
+        in loop last;
+           {data = data, first = 0, last = last}
+        end
+
+   fun tabulate_f update (values, count) =
+        let val bytes = Word.toInt count * word_size
+            val last = bytes - word_size
+            val data = create_array bytes
+            fun loop (index, byte_index) =
+      	   if index >= count then ()
+      	   else
+      	    (update (data, byte_index, values index);
+      	     loop (index + 0w1, byte_index + word_size))
+        in loop (0w0, 0);
+           {data = data, first = 0, last = last}
+        end
+
+   fun tabulate_r update (values, count) =
+        let val bytes = Word.toInt count * word_size
+            val last = bytes - word_size
+	    val data = create_array bytes
+	    fun loop (index, byte_index) =
+      	         if index >= count then ()
+		 else
+		  (update (data, byte_index, values index);
+		   loop (index + 0w1, byte_index - word_size))
+          in loop (0w0, last);
+             {data = data, first = 0, last = last}
+          end
+
+   fun next_f sub {data, first, last} =
+        if first > last then NONE
+        else SOME (sub (data, first),
+      	     {data = data, first = first + word_size, last = last})
+
+   fun next_r sub {data, first, last} =
+        if first > last then NONE
+        else SOME (sub (data, last),
+      	     {data = data, first = first, last = last - word_size})
+
+   fun head next array =
+        case next array of
+           NONE => raise Empty
+         | SOME (head, _) => head
+
+   fun tail next array =
+        case next array of
+           NONE => raise Empty
+         | SOME (_, tail) => tail
+
+   fun seek_f ({data, first, last}, count) =
+        {data = data, first = first + word_size * Word.toInt count,
+           last = last}
+
+   fun seek_r ({data, first, last}, count) =
+        {data = data, first = first,
+         last = last - word_size * Word.toInt count}
+
+   fun nth (next, seek) arg =
+        case next (seek arg) of
+           NONE => raise Empty
+         | SOME (head, _) => head
+
+   fun isempty {data, first: int, last} = first > last
+
+   fun wait _ = ()
+
+   fun length {data, first, last} =
+        Int.max ((last - first) div word_size + 1, 0)
+
+   fun map_f (sub, update) map {data, first, last} =
+        let val bytes = Int.max (last - first + word_size, 0)
+            val new = create_array bytes
+            fun loop index =
+                 if index >= bytes then ()
+		 else
+		  (update (new, index, map (sub (data, index + first)));
+		   loop (index + word_size))
+        in loop 0;
+           {data = new, first = 0, last = bytes - word_size}
+        end
+
+   fun map_r (sub, update) map {data, first, last} =
+        let val bytes = Int.max (last - first + word_size, 0)
+            val new = create_array bytes
+	    val new_last = bytes - word_size
+            fun loop index =
+                 if index < 0 then ()
+		 else
+		  (update (new, index, map (sub (data, index + first)));
+		   loop (index - word_size))
+        in loop new_last;
+           {data = new, first = 0, last = new_last}
+        end
+
+   fun app_f sub app {data, first, last} =
+        let fun loop index =
+                 if index > last then ()
+      	   else
+      	    (app (sub (data, index));
+      	     loop (index + word_size))
+        in loop first
+        end
+
+   fun app_r sub app {data, first, last} =
+        let fun loop index =
+                 if index < first then ()
+      	   else
+      	    (app (sub (data, index));
+      	     loop (index - word_size))
+        in loop last
+        end
+
+   fun fold_f sub fold init {data, first, last} =
+        let fun loop (index, value) =
+                 if index > last then value
+      	   else
+      	    loop (index + word_size, fold (sub (data, index), value))
+        in loop (first, init)
+        end
+
+   fun fold_r sub fold init {data, first, last} =
+        let fun loop (index, value) =
+                 if index < first then value
+      	   else
+      	    loop (index - word_size, fold (sub (data, index), value))
+        in loop (last, init)
+        end
+
+   fun equal_loop (d1, i1, 0, d2, i2) = true
+     | equal_loop (d1, i1, bytes, d2, i2) =
+        Word256.sub (d1, i1) = Word256.sub (d2, i2) andalso
+        equal_loop (d1, i1 + word_size, bytes - word_size,
+		    d2, i2 + word_size)
+
+   fun equal ({data = d1, first = f1, last = l1},
+	      {data = d2, first = f2, last = l2}) =
+        (l1 < f1 andalso l2 < f2) orelse
+	(l1 - f1 = l2 - f2 andalso equal_loop (d1, f1, l1 - f1, d2, f2))
+
+(* lexicographic comparison:  aaz < ab < aba *)
+   fun less_f_loop (sub, d1, f1, l1, d2, f2, l2) =
+        if f2 > l2 then false		(* second is shorter or same *)
+        else if f1 > l1 then true	(* first is shorter *)
+        else
+         let val v1 = sub (d1, f1)
+             val v2 = sub (d2, f2)
+         in Word256.< (v1, v2) orelse
+            (v1 = v2 andalso
+             less_f_loop (sub, d1, f1 + word_size, l1,
+      		    d2, f2 + word_size, l2))
+         end
+
+   fun less_f sub ({data = d1, first = f1, last = l1},
+      	     {data = d2, first = f2, last = l2}) =
+        less_f_loop (sub, d1, f1, l1, d2, f2, l2)
+
+(* reverse lexicographic comparison:  zaa < ba < aba *)
+   fun less_r_loop (sub, d1, f1, l1, d2, f2, l2) =
+        if f2 > l2 then false		(* second is shorter or same *)
+        else if f1 > l1 then true	(* first is shorter *)
+        else
+         let val v1 = sub (d1, l1)
+             val v2 = sub (d2, l2)
+         in Word256.< (v1, v2) orelse
+            (v1 = v2 andalso
+             less_r_loop (sub, d1, f1, l1 - word_size,
+      		    d2, f2, l2 - word_size))
+         end
+
+   fun less_r sub ({data = d1, first = f1, last = l1},
+      	     {data = d2, first = f2, last = l2}) =
+        less_r_loop (sub, d1, f1, l1, d2, f2, l2)
+
+   fun filter_f (new, next) filter =
+        let fun f NONE = NONE
+      	| f (SOME (first, rest)) =
+                 case filter first of
+      	      NONE => f (next rest)
+      	    | SOME value => SOME (value, next rest)
+        in (new f) o next
+        end
+
+   fun filter_r (new, next) filter =
+        let fun f NONE = NONE
+      	| f (SOME (first, rest)) =
+                 case filter first of
+      	      NONE => f (next rest)
+      	    | SOME value => SOME (value, next rest)
+        in (new f) o next
+        end
+
+   fun append ({data = d1, first = f1, last = l1},
+      	 {data = d2, first = f2, last = l2}) =
+        let val size = l1 - f1 + l2 - f2 + word_size + word_size
+            val new = create_array size
+            fun copy1 index =
+                 if index < f1 then ()
+      	   else
+      	    (Word256.update (new, index - f1, Word256.sub (d1, index));
+      	     copy1 (index - word_size))
+            val off2 = f2 - l1 + f1 - word_size
+            fun copy2 index =
+                 if index < f2 then ()
+      	   else
+      	    (Word256.update (new, index - off2, Word256.sub (d2, index));
+      	     copy2 (index - word_size))
+        in copy1 l1;
+           copy2 l2;
+           {data = new, first = 0, last = size - word_size}
+        end
+
+   fun reverse (array as {data, first, last}) =
+        let val delta = last - first
+            val size = delta + word_size
+            val new = create_array size
+            fun copy (read, write) =
+                 if read < first then ()
+      	   else
+      	    (Word256.update (new, write, Word256.sub (data, read));
+      	     copy (read - word_size, write + word_size))
+        in copy (last, 0);
+           {data = new, first = 0, last = delta}
+        end
+
+   fun write (array as {data, first, last: int}) =
+        if first <= last then SOME array else NONE
+
+   fun read array = array
+
+(*
+		25.	structure W256.Native
+*)
+
+  in
+   structure Native =
+    struct
+     type T = T
+     type U = U
+     type element = element
+
+     structure F =
+      struct
+       type T = T
+       type U = U
+       type element = element
+       exception Empty
+       fun new f = new_f Word256.update f
+       val next = next_f Word256.sub
+       val seek = seek_f
+       val head = head next
+       val tail = tail next
+       val nth = nth (next, seek)
+       val isempty = isempty
+       val wait = wait
+       val map = map_f (Word256.sub, Word256.update)
+       fun app f v = app_f Word256.sub f v
+       fun fold f init v = fold_f Word256.sub f init v
+       val filter = filter_f (new, next)
+       val create = create Word256.update
+       val tabulate = tabulate_f Word256.update
+       val equal = equal
+       val less = less_f Word256.sub
+       val length: (T -> Word.word) = Word.fromInt o length
+       val append = append
+       val reverse = reverse
+       val create_uninitialized = make o Word.toInt
+       val write = write
+       val read = read
+       fun update ({data, first, last}, value) =
+            (Word256.update (data, first, value);
+             if first + word_size > last then NONE
+             else
+              SOME ({data = data, first = first + word_size, last = last}))
+      end
+
+     structure R =
+      struct
+       type T = T
+       type U = U
+       type element = element
+       exception Empty
+       fun new f = new_r Word256.update f
+       val next = next_r Word256.sub
+       val seek = seek_r
+       val head = head next
+       val tail = tail next
+       val nth = nth (next, seek)
+       val isempty = isempty
+       val wait = wait
+       val map = map_r (Word256.sub, Word256.update)
+       fun app f v = app_r Word256.sub f v
+       fun fold f init v = fold_r Word256.sub f init v
+       val filter = filter_r (new, next)
+       val create = create Word256.update
+       val tabulate = tabulate_r Word256.update
+       val equal = equal
+       val less = less_r Word256.sub
+       val length: (T -> Word.word) = Word.fromInt o length
+       val append = append
+       val reverse = reverse
+       val create_uninitialized = make o Word.toInt
+       val write = write
+       val read = read
+       fun update ({data, first, last}, value) =
+            (Word256.update (data, last, value);
+             if first + word_size > last then NONE
+             else
+              SOME ({data = data, first = first, last = last - word_size}))
+      end
+    end
+
+   exception Assumed_Wrong_Endianness_In_Word_Array
+   val _ = if Word256.bigEndian then
+            raise Assumed_Wrong_Endianness_In_Word_Array
+           else ()
+   structure Little = Native
+
+(*
+		26.	structure W256.Big
+*)
+
+   structure Big =
+    struct
+     type T = T
+     type U = U
+     type element = element
+
+     structure F =
+      struct
+       type T = T
+       type U = U
+       type element = element
+       exception Empty
+       fun new f = new_f Word256.update_big f
+       val next = next_f Word256.sub_big
+       val seek = seek_f
+       val head = head next
+       val tail = tail next
+       val nth = nth (next, seek)
+       val isempty = isempty
+       val wait = wait
+       val map = map_f (Word256.sub_big, Word256.update_big)
+       fun app f v = app_f Word256.sub_big f v
+       fun fold f init v = fold_f Word256.sub_big f init v
+       val filter = filter_f (new, next)
+       val create = create Word256.update_big
+       val tabulate = tabulate_f Word256.update_big
+       val equal = equal
+       val less = less_f Word256.sub_big
+       val length: (T -> Word.word) = Word.fromInt o length
+       val append = append
+       val reverse = reverse
+       val create_uninitialized = make o Word.toInt
+       val write = write
+       val read = read
+       fun update ({data, first, last}, value) =
+            (Word256.update_big (data, first, value);
+             if first + word_size > last then NONE
+             else
+              SOME ({data = data, first = first + word_size, last = last}))
+      end
+
+     structure R =
+      struct
+       type T = T
+       type U = U
+       type element = element
+       exception Empty
+       fun new f = new_r Word256.update_big f
+       val next = next_r Word256.sub_big
+       val seek = seek_r
+       val head = head next
+       val tail = tail next
+       val nth = nth (next, seek)
+       val isempty = isempty
+       val wait = wait
+       val map = map_r (Word256.sub_big, Word256.update_big)
+       fun app f v = app_r Word256.sub_big f v
+       fun fold f init v = fold_r Word256.sub_big f init v
+       val filter = filter_r (new, next)
+       val create = create Word256.update_big
+       val tabulate = tabulate_r Word256.update_big
+       val equal = equal
+       val less = less_r Word256.sub_big
+       val length = Native.F.length
+       val append = append
+       val reverse = reverse
+       val create_uninitialized = make o Word.toInt
+       val write = write
+       val read = read
+       fun update ({data, first, last}, value) =
+            (Word256.update_big (data, last, value);
+             if first + word_size > last then NONE
+             else
+              SOME ({data = data, first = first, last = last - word_size}))
+      end
+    end
+
+(*
+		27.	structure W256.U_Big/Little
+
+ The unaligned-access structures which follow are not highly
+ optimized.  In theory, if you want high performance, you should use
+ the aligned accesses.
+*)
+
+   local
+    fun get_data (array, index) =
+         let fun tabulate i = Word8Array.sub (array, index + i)
+         in Word8Array.tabulate (word_size, tabulate)
+         end
+
+    fun put_data (update, (array, index, value)) =
+         let val data = create_array word_size
+             fun copy 0 =
+      	    Word8Array.update (array, index, Word8Array.sub (data, 0))
+      	 | copy i =
+      	    (Word8Array.update (array, index + i,
+      				Word8Array.sub (data, i));
+      	     copy (i - 1))
+         in update (data, 0, value);
+            copy (word_size - 1)
+         end
+
+    fun sub_big arg = Word256.sub_big (get_data arg, 0)
+    fun sub_little arg = Word256.sub_little (get_data arg, 0)
+
+    fun update_big arg = put_data (Word256.update_big, arg)
+    fun update_little arg = put_data (Word256.update_little, arg)
+
+    fun append_u (new, next) (a1, a2) =
+         let fun result (NONE, NONE) = NONE
+      	 | result (NONE, SOME (element, next_array)) =
+                  SOME (element, (NONE, next next_array))
+      	 | result (SOME (element, next_array), rest) =
+                  SOME (element, (next next_array, rest))
+         in new result (next a1, next a2)
+         end
+
+    fun reverse_uf (tabulate, sub) (array as {data, first, last}) =
+         let val length = Word.fromInt (length array)
+	     fun get index = sub (data, last - Word.toInt index * word_size)
+	 in tabulate (get, length)
+	 end
+
+   in
+    structure U_Big =
+     struct
+      type T = T
+      type U = U
+      type element = element
+
+      structure F =
+       struct
+        type T = T
+        type U = U
+        type element = element
+        exception Empty
+        val new = Big.F.new
+        val next = next_f sub_big
+        val seek = seek_f
+        val head = head next
+        val tail = tail next
+        val nth = nth (next, seek)
+        val isempty = isempty
+        val wait = wait
+        val map = map_f (sub_big, update_big)
+        fun app f v = app_f sub_big f v
+        fun fold f init v = fold_f sub_big f init v
+        val filter = filter_f (new, next)
+        val create = create update_big
+        val tabulate = tabulate_f update_big
+        val equal = equal
+        val less = less_f sub_big
+        val length = Native.F.length
+        val append = append_u (new, next)
+        val reverse = reverse_uf (tabulate, sub_big)
+        val create_uninitialized = Native.F.create_uninitialized
+        val write = write
+        val read = read
+        fun update ({data, first, last}, value) =
+             (update_big (data, first, value);
+      	if first + word_size > last then NONE
+      	else
+      	 SOME {data = data, first = first + word_size, last = last})
+       end
+
+      structure R =
+       struct
+        type T = T
+        type U = U
+        type element = element
+        exception Empty
+        val new = Big.R.new
+        val next = next_r sub_big
+        val seek = seek_r
+        val head = head next
+        val tail = tail next
+        val nth = nth (next, seek)
+        val isempty = isempty
+        val wait = wait
+        val map = map_r (sub_big, update_big)
+        fun app f v = app_r sub_big f v
+        fun fold f init v = fold_r sub_big f init v
+        val filter = filter_r (new, next)
+        val create = create update_big
+        val tabulate = tabulate_r update_big
+        val equal = equal
+        val less = less_r sub_big
+        val length = Native.F.length
+        val append = append_u (new, next)
+        val reverse = F.reverse
+        val create_uninitialized = Native.F.create_uninitialized
+        val write = write
+        val read = read
+        fun update ({data, first, last}, value) =
+             (update_big (data, last, value);
+      	if first + word_size > last then NONE
+      	else
+      	 SOME {data = data, first = first, last = last - word_size})
+       end
+     end
+
+    structure U_Little =
+     struct
+      type T = T
+      type U = U
+      type element = element
+
+      structure F =
+       struct
+        type T = T
+        type U = U
+        type element = element
+        exception Empty
+        val new = Little.F.new
+        val next = next_f sub_little
+        val seek = seek_f
+        val head = head next
+        val tail = tail next
+        val nth = nth (next, seek)
+        val isempty = isempty
+        val wait = wait
+        val map = map_f (sub_little, update_little)
+        fun app f v = app_f sub_little f v
+        fun fold f init v = fold_f sub_little f init v
+        val filter = filter_f (new, next)
+        val create = create update_little
+        val tabulate = tabulate_f update_little
+        val equal = equal
+        val less = less_f sub_little
+        val length = Native.F.length
+        val append = append_u (new, next)
+        val reverse = reverse_uf (tabulate, sub_little)
+        val create_uninitialized = Native.F.create_uninitialized
+        val write = write
+        val read = read
+        fun update ({data, first, last}, value) =
+             (update_little (data, first, value);
+	      if first + word_size > last then NONE
+	      else
+	       SOME {data = data, first = first + word_size, last = last})
+       end
+
+      structure R =
+       struct
+        type T = T
+        type U = U
+        type element = element
+        exception Empty
+        val new = Little.R.new
+        val next = next_r sub_little
+        val seek = seek_r
+        val head = head next
+        val tail = tail next
+        val nth = nth (next, seek)
+        val isempty = isempty
+        val wait = wait
+        val map = map_r (sub_little, update_little)
+        fun app f v = app_r sub_little f v
+        fun fold f init v = fold_r sub_little f init v
+        val filter = filter_r (new, next)
+        val create = create update_little
+        val tabulate = tabulate_r update_little
+        val equal = equal
+        val less = less_r sub_little
+        val length = Native.F.length
+        val append = append_u (new, next)
+        val reverse = F.reverse
+        val create_uninitialized = Native.F.create_uninitialized
+        val write = write
+        val read = read
+        fun update ({data, first, last}, value) =
+             (update_little (data, last, value);
+	      if first + word_size > last then NONE
+	      else
+	       SOME {data = data, first = first, last = last - word_size})
+       end
+     end
+   end (* local *)
+
+   structure F_Big = Big.F
+   structure R_Big = Big.R
+   structure F_Little = Little.F
+   structure R_Little = Little.R
+
+(*
+		28.	alignment functions
+*)
+
+   val native_big_endian = Word256.bigEndian
+
+   local
+     val almost_word = word_size - 1
+     fun modulo n = Bits.andb (n, almost_word)
+   in
+    fun align (array as {data, first, last}) =
+         if modulo first = 0 andalso modulo last = 0 then array
+	 else
+	  let val new_first = first + almost_word
+	  in {data = data, first = new_first - modulo new_first,
+	      last = last - modulo last}
+	  end
+
+    fun align_f (array as {data, first, last}) =
+         if modulo first = 0 then array
+	 else
+	  let val new_first = first + almost_word
+	  in {data = data, first = new_first - modulo new_first, last = last}
+	  end
+
+    fun align_r (array as {data, first, last}) =
+         if modulo last = 0 then array
+         else {data = data, first = first, last = last - modulo last}
+
+    fun unalign x = x
+    val unalign_f = unalign
+    val unalign_r = unalign
+   end
+  end (* local *)
+ end;
+
+(*
+		29.	structure Word_Array
+*)
+
+structure Word_Array: EXPOSE_WORD_ARRAY =
+ struct
+
+(* First and last are the byte indices of the first and last words in
+ the array.
+
+ We use the type int for first and last since we want to have
+ last < first if we decrement last past first.  We could use
+ words, but then we would have to explicitly check for underflow
+ of last every time we decremented it.  Also, as long as sub and
+ update use integer indices, this is simpler. *)
+
+  type T = {data: Word8Array.array, first: int, last: int}
+
+  fun alignment_f {data, first, last} = Word.fromInt first
+  fun alignment_r {data, first, last} = Word.fromInt last + 0w1
+
+  fun expose {data, first, last} =
+       (data, Word.fromInt first, Word.fromInt last)
+
+  structure W8 = Word_Array_W8
+  structure W16 = Word_Array_W16
+  structure W32 = Word_Array_W32
+  structure W64 = Word_Array_W64
+  structure W128 = Word_Array_W128
+  structure W256 = Word_Array_W256
+
+  fun from8 x = x
+  fun from16 {data, first, last} =
+       {data = data, first = first, last = last + 1}
+  fun from32 {data, first, last} =
+       {data = data, first = first, last = last + 3}
+  fun from64 {data, first, last} =
+       {data = data, first = first, last = last + 7}
+  fun from128 {data, first, last} =
+       {data = data, first = first, last = last + 15}
+  fun from256 {data, first, last} =
+       {data = data, first = first, last = last + 31}
+
+  fun to8 x = x
+  fun to16 {data, first, last} =
+       {data = data, first = first, last = last - 1}
+  fun to32 {data, first, last} =
+       {data = data, first = first, last = last - 3}
+  fun to64 {data, first, last} =
+       {data = data, first = first, last = last - 7}
+  fun to128 {data, first, last} =
+       {data = data, first = first, last = last - 15}
+  fun to256 {data, first, last} =
+       {data = data, first = first, last = last - 31}
+
+ end
+
+

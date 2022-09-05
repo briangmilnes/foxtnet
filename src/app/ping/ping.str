@@ -1,0 +1,146 @@
+(*
+
+	FoxNet: The Fox Project's Communication Protocol Implementation Effort
+	Edoardo Biagioni (Edoardo.Biagioni@cs.cmu.edu)
+	Brian Milnes (Brian.Milnes@cs.cmu.edu)
+	Ken Cline (Kenneth.Cline@cs.cmu.edu)
+        Nick Haines (Nick.Haines@cs.cmu.edu)
+	Fox Project
+	School of Computer Science
+	Carnegie Mellon University
+	Pittsburgh, Pa 15139-3891
+
+		i.	Abstract
+
+	A ping operation, similar to typical unix pings.
+
+	Note that this program relies on your system setup files
+	having been extended to support the foxnet.  If you are not
+	sure how to do so, check .../prot/init/init.fun, which reads
+	and parses the system files.
+
+		ii.	Table of Contents
+
+	i.	Abstract
+	ii.	Table of Contents
+	iii.	RCS Log
+
+		iii.	RCS Log
+	
+$Log: ping.str,v $
+Revision 1.14  1997/06/04  12:07:55  esb
+added dns_timeout as required by Build_Dns.
+
+Revision 1.13  96/10/03  18:39:36  esb
+adapted to new builddns.fun.
+
+Revision 1.12  1996/05/14  19:17:03  derby
+Update to new interfaces.
+
+Revision 1.11  1996/05/08  02:04:49  esb
+modified the initalization so it works for known hosts in the absence
+of the configuration file.
+
+Revision 1.10  1996/03/05  21:12:47  esb
+adapted to new ping.fun, DNS_LOOKUP.
+
+Revision 1.9  1996/03/04  21:34:35  esb
+adapted to use initialization code.
+
+Revision 1.8  1996/03/01  19:37:09  esb
+new implementation, for Foxnet V2
+
+Revision 1.7  1994/12/21  20:36:49  milnes
+Updated for duplicate addressing.
+
+Revision 1.6  1994/11/10  16:15:23  milnes
+Updated to the new signatures.
+
+Revision 1.5  1994/07/13  16:54:40  milnes
+Updated to allow ping to use dns.
+
+Revision 1.4  1994/07/01  02:22:18  danwang
+Moved control structures into Fox_Basis.
+
+Revision 1.3  1994/06/05  18:47:04  milnes
+Added name mapping, printing and so on.
+
+Revision 1.2  1994/05/23  14:06:15  milnes
+Added a pointer to the runtime.
+
+Revision 1.1  1994/05/04  19:14:18  milnes
+Initial revision
+
+		1.     structure Ping_Stack
+*)
+
+structure Ping_Stack =
+ struct
+  structure B = Fox_Basis
+
+  val dev_debug = ref 0
+  val eth_debug = ref 0
+  val arp_debug = ref 0
+  val ip_debug = ref 0
+  val udp_debug = ref 0
+  val ping_debug = ref 0
+  val debug_level = SOME ping_debug
+
+  local
+   structure Base = Build_Eth_Dev (structure B = Fox_Basis
+				   val debug_level = SOME dev_debug)
+
+   structure Init = Initialize (structure Device = Base.Raw
+				structure V = Fox_Basis.V
+(* use "val hostname_to_ip = fn _ => NONE" to force the use of system files
+   to figure out the local IP number. *)
+				val hostname_to_ip =
+				       Hostname_Ip.hostname_to_ip 
+				val interface_number = 0)
+
+   structure Stack = Build_Dns (structure Device = Base.Dev
+				structure B = Fox_Basis
+				val tcp_window_size = 4096
+				val tcp_user_timeout = Word32.fromInt 60000
+				val udp_checksum = true
+				val dns_timeout = 10000
+				val eth_debug_level = NONE
+				val arp_debug_level = NONE
+				val ip_debug_level = NONE
+				val tcp_debug_level = NONE
+				val udp_debug_level = NONE
+				val dns_debug_level = NONE)
+
+   val transport_setup = Stack.Udp.Transport_Setup.Setup (Init.Ip.setup ())
+   val dns_setup = Init.Dns.setup transport_setup
+
+   exception Hostname_Lookup of string
+
+  in
+   structure Ip = Stack.Ip
+   structure Udp = Stack.Udp
+
+   val setup = transport_setup
+
+   fun lookup name =
+        case Stack.Dns_Lookup.lookup dns_setup name of
+	   SOME h => h
+	 | NONE => raise (Hostname_Lookup name)
+
+   val inverse_lookup = Stack.Dns_Lookup.inverse_lookup dns_setup
+
+  end
+ end
+
+(*
+		1.     structure Ping
+*)
+
+structure Ping = Ping (structure Ip = Ping_Stack.Ip
+		       structure Udp = Ping_Stack.Udp
+		       val setup = Ping_Stack.setup
+		       val lookup = Ping_Stack.lookup
+		       val inverse_lookup = Ping_Stack.inverse_lookup
+		       structure B = Fox_Basis
+		       val debug_level = Ping_Stack.debug_level)
+

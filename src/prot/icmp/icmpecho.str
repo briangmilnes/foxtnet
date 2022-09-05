@@ -1,0 +1,77 @@
+(*
+
+	FoxNet: The Fox Project's Communication Protocol Implementation Effort
+	Edoardo Biagioni (Edoardo.Biagioni@cs.cmu.edu)
+	Brian Milnes (Brian.Milnes@cs.cmu.edu)
+	Ken Cline (Kenneth.Cline@cs.cmu.edu)
+        Nick Haines (Nick.Haines@cs.cmu.edu)
+	Fox Project
+	School of Computer Science
+	Carnegie Mellon University
+	Pittsburgh, Pa 15139-3891
+
+		i.	Abstract
+
+	A structure that makes a real ICMP stack that acts to echo
+  another hosts echo requests, and does nothing else. 
+
+		ii.	Table of Contents
+
+	i.	Abstract
+	ii.	Table of Contents
+	iii.	RCS Log
+	1.	
+
+		iii.	RCS Log
+	
+$Log: icmpecho.str,v $
+Revision 1.7  1994/11/10  16:12:20  milnes
+Updated for tcpipeth/addressing and debug_trace structure.
+
+Revision 1.6  1994/10/19  23:06:09  milnes
+alpha conversion.
+
+Revision 1.5  1994/09/12  18:29:44  milnes
+Added ip_address_option.
+
+Revision 1.4  1994/08/28  21:47:10  milnes
+Added default gateways.
+
+Revision 1.3  1994/07/01  02:36:15  danwang
+Moved control structures into Fox_Basis.
+
+Revision 1.2  1994/06/16  16:59:15  danwang
+Updated for functorized Fox_Basis
+
+Revision 1.1  1994/06/05  18:48:19  milnes
+Initial revision
+
+
+		1.	structure IcmpEcho
+*)
+
+structure Icmp_Echos =  
+ struct 
+ fun serve_echos int_option =
+  let
+   val echo_interval = 10000 (* 10 seconds *)
+   fun serve_echos_forever () =
+    (Fox_Basis.Scheduler.sleep echo_interval;
+     serve_echos_forever ())
+
+   fun serve_echos_for_n_intervals 0 = ()
+     | serve_echos_for_n_intervals n = 
+       (Fox_Basis.Scheduler.sleep echo_interval;
+        serve_echos_for_n_intervals (n - 1))
+  in
+    Tcp_Ip_Eth.initialize();
+    case int_option of
+      NONE   => serve_echos_forever ()
+    | SOME n => serve_echos_for_n_intervals n;
+    Tcp_Ip_Eth.finalize();
+    Fox_Basis.Scheduler.reset()
+  end
+end 
+
+
+

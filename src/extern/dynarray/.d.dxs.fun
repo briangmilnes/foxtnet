@@ -1,0 +1,2 @@
+Decl 2
+(b f%Byte_Extern (l (h (d (f s%FoxWord16 s%FoxWord32 s%Order s%Dyn_Array) (a s%Byte1 (i f%DXByteN (h (d (a s%Dyn_Array (g s%Dyn_Array) 0) (f s%FoxWord8 s%Dyn_Array))) F) 0) (a s%Byte2 (i f%DXByteN (h (d (a s%Dyn_Array (g s%Dyn_Array) 0) (f s%FoxWord16))) F) 0) (a s%Byte4 (i f%DXByteN (h (d (a s%Dyn_Array (g s%Dyn_Array) 0) (f s%FoxWord32))) F) 0))) (g s$BYTE_EXTERN) 0 (h (d (a s%Dyn_Array (g s$DYNAMIC_BYTE_ARRAY) 0) (a s%Order (g s$BYTE_ORDERS) 0)))))
